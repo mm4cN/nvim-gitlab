@@ -13,6 +13,27 @@ local known_keys = {
   "<CR>",
 }
 
+local function with_hints(lines, hints)
+  if not hints or #hints == 0 then
+    return lines
+  end
+
+  local rendered = {}
+
+  local parts = {}
+  for _, hint in ipairs(hints) do
+    table.insert(parts, hint.key .. " " .. hint.label)
+  end
+
+  table.insert(rendered, table.concat(parts, "  "))
+  table.insert(rendered, string.rep("─", 40))
+  table.insert(rendered, "")
+
+  vim.list_extend(rendered, lines)
+
+  return rendered
+end
+
 local function set_keymaps(buf, keymaps)
   if not keymaps then
     return
@@ -62,7 +83,7 @@ local function render(view)
   view = view or {}
 
   local title = view.title or "gitlab.nvim"
-  local lines = view.lines or {}
+  local lines = with_hints(view.lines or {}, view.hints)
 
   local buf, _ = ensure_window()
 

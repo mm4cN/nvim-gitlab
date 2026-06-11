@@ -86,10 +86,20 @@ local function show_pipeline(root, pipeline)
     end
   end
 
+  local hints = {
+    { key = "<CR>", label = "Details" },
+    { key = "L",    label = "Logs" },
+    { key = "A",    label = "Artifacts" },
+    { key = "R",    label = "Re-run" },
+    { key = "b",    label = "Back" },
+    { key = "q",    label = "Quit" },
+  }
+
   buffer.show({
     title = "GitLab Pipeline #" .. tostring(pipeline.id),
     filetype = "gitlab",
     lines = lines,
+    hints = hints,
 
     keymaps = {
       q = buffer.close_current,

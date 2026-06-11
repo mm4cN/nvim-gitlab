@@ -80,10 +80,17 @@ function M.list()
     return
   end
 
+  local hints = {
+    { key = "<CR>", label = "Details" },
+    { key = "R",    label = "Re-run" },
+    { key = "q",    label = "Quit" },
+  }
+
   buffer.show({
     title = "GitLab Pipelines",
     filetype = "gitlab",
     lines = vim.split(output, "\n", { plain = true }),
+    hints = hints,
 
     keymaps = {
       q = buffer.close_current,

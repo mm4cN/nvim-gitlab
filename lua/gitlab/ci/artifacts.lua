@@ -123,7 +123,6 @@ function M.download(opts)
 
     if unzip_err then
       notification.error(unzip_err)
-
       return
     end
   end
@@ -139,10 +138,16 @@ function M.download(opts)
     table.insert(lines, "Extracted: " .. extract_dir)
   end
 
+  local hints = {
+    { key = "b", label = "Back" },
+    { key = "q", label = "Quit" },
+  }
+
   buffer.push({
     title = "GitLab Artifacts",
     filetype = "gitlab",
     lines = lines,
+    hints = hints,
     keymaps = {
       q = buffer.close_current,
       b = buffer.back,
