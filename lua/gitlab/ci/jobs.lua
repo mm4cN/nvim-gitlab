@@ -4,6 +4,7 @@ local buffer = require("gitlab.ui.buffer")
 local notification = require("gitlab.ui.notification")
 local picker = require("gitlab.ui.picker")
 local constants = require("gitlab.constants")
+local api = require("gitlab.api")
 
 local M = {}
 
@@ -25,48 +26,6 @@ local function current_branch()
   end
 
   return branch
-end
-
-local function latest_pipeline(root, branch)
-  local pipelines, err = glab.run_json({
-    "api",
-    "projects/:id/pipelines?ref=" .. branch .. "&per_page=1",
-  }, {
-    cwd = root,
-  })
-
-  if err then
-    notification.error(err)
-    return nil
-  end
-
-  if not pipelines or #pipelines == 0 then
-    notification.error("No pipeline found for branch: " .. branch)
-    return nil
-  end
-
-  return pipelines[1]
-end
-
-local function pipeline_jobs(root, pipeline_id)
-  local jobs, err = glab.run_json({
-    "api",
-    "projects/:id/pipelines/" .. tostring(pipeline_id) .. "/jobs",
-  }, {
-    cwd = root,
-  })
-
-  if err then
-    notification.error(err)
-    return nil
-  end
-
-  if not jobs or #jobs == 0 then
-    notification.error("No jobs found for pipeline: " .. tostring(pipeline_id))
-    return nil
-  end
-
-  return jobs
 end
 
 local function show_logs(root, job_id)
@@ -119,13 +78,24 @@ function M.logs(opts)
     return
   end
 
-  local pipeline = latest_pipeline(root, branch)
+  local pipeline, pipeline_error = api.latest_pipeline({ cwd = root, ref = branch, })
+
   if not pipeline then
+    notification.error(pipeline_error)
     return
   end
 
-  local jobs = pipeline_jobs(root, pipeline.id)
+  local jobs, jobs_err = api.pipeline_jobs(pipeline.id, {
+    cwd = root,
+  })
+
   if not jobs then
+    notification.error(jobs_err)
+    return
+  end
+
+  if #jobs == 0 then
+    notification.error("No jobs found for pipeline: " .. tostring(pipeline.id))
     return
   end
 
