@@ -1,3 +1,4 @@
+local actions = require("gitlab.ci.actions")
 local api = require("gitlab.api")
 local artifacts = require("gitlab.ci.artifacts")
 local buffer = require("gitlab.ui.buffer")
@@ -119,6 +120,10 @@ function M.show(opts)
         artifacts.download({
           job_id = job.id,
         })
+      end,
+
+      R = function()
+        actions.retry_job(job.id)
       end,
     },
   })

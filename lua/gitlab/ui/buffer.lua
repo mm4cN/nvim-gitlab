@@ -10,7 +10,6 @@ local known_keys = {
   "A",
   "L",
   "R",
-  "X",
   "<CR>",
 }
 
@@ -24,6 +23,7 @@ local function set_keymaps(buf, keymaps)
       buffer = buf,
       silent = true,
       nowait = true,
+      noremap = true,
     })
   end
 end

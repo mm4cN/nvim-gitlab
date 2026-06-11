@@ -2,15 +2,24 @@ local glab = require("gitlab.glab")
 
 local M = {}
 
-function M.get(path, opts)
+function M.request(path, opts)
   opts = opts or {}
+  local args = { "api", path }
 
-  return glab.run_json({
-    "api",
-    path,
-  }, {
+  if opts.method then
+    vim.list_extend(args, {
+      "--method",
+      opts.method,
+    })
+  end
+
+  return glab.run_json(args, {
     cwd = opts.cwd,
   })
+end
+
+function M.get(path, opts)
+  return M.request(path, opts)
 end
 
 function M.latest_pipeline(opts)

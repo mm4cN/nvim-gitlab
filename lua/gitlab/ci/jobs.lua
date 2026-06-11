@@ -1,3 +1,4 @@
+local actions = require("gitlab.ci.actions")
 local artifacts = require("gitlab.ci.artifacts")
 local git = require("gitlab.git")
 local glab = require("gitlab.glab")
@@ -246,6 +247,7 @@ function M.list()
     keymaps = {
       q = buffer.close_current,
       b = buffer.back,
+
       ["<CR>"] = function()
         local job_id = navigation.job_id_under_cursor()
         if not job_id then
@@ -256,6 +258,7 @@ function M.list()
           job_id = job_id,
         })
       end,
+
       L = function()
         local job_id = navigation.job_id_under_cursor()
         if not job_id then
@@ -264,6 +267,7 @@ function M.list()
         end
         show_logs(root, job_id)
       end,
+
       A = function()
         local job_id = navigation.job_id_under_cursor()
         if not job_id then
@@ -273,6 +277,18 @@ function M.list()
         artifacts.download({
           job_id = job_id,
         })
+      end,
+
+      R = function()
+        local job_id = navigation.job_id_under_cursor()
+
+        if not job_id then
+          notification.error("No job id under cursor")
+
+          return
+        end
+
+        actions.retry_job(job_id)
       end,
     },
   })

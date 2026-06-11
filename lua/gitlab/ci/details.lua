@@ -1,4 +1,5 @@
 local api = require("gitlab.api")
+local actions = require("gitlab.ci.actions")
 local artifacts = require("gitlab.ci.artifacts")
 local buffer = require("gitlab.ui.buffer")
 local constants = require("gitlab.constants")
@@ -130,6 +131,10 @@ local function show_pipeline(root, pipeline)
         artifacts.download({
           job_id = job_id,
         })
+      end,
+
+      R = function()
+        actions.rerun_pipeline(pipeline.id)
       end,
     },
   })

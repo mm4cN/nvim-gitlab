@@ -1,6 +1,9 @@
+local actions = require("gitlab.ci.actions")
+local buffer = require("gitlab.ui.buffer")
+local details = require("gitlab.ci.details")
 local git = require("gitlab.git")
 local glab = require("gitlab.glab")
-local buffer = require("gitlab.ui.buffer")
+local navigation = require("gitlab.ui.navigation")
 local notification = require("gitlab.ui.notification")
 
 local M = {}
@@ -79,8 +82,34 @@ function M.list()
 
   buffer.show({
     title = "GitLab Pipelines",
-    filetype = "text",
+    filetype = "gitlab",
     lines = vim.split(output, "\n", { plain = true }),
+
+    keymaps = {
+      q = buffer.close_current,
+
+      ["<CR>"] = function()
+        local pipeline_id = navigation.pipeline_id_under_cursor()
+
+        if not pipeline_id then
+          notification.error("No pipeline id under cursor")
+          return
+        end
+
+        details.show({
+          pipeline_id = pipeline_id,
+        })
+      end,
+
+      R = function()
+        local pipeline_id = navigation.pipeline_id_under_cursor()
+        if not pipeline_id then
+          notification.error("No pipeline id under cursor")
+          return
+        end
+        actions.rerun_pipeline(pipeline_id)
+      end,
+    },
   })
 end
 
