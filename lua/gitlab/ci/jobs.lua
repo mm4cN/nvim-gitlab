@@ -5,6 +5,7 @@ local notification = require("gitlab.ui.notification")
 local picker = require("gitlab.ui.picker")
 local constants = require("gitlab.constants")
 local api = require("gitlab.api")
+local navigation = require("gitlab.ui.navigation")
 
 local M = {}
 
@@ -191,11 +192,6 @@ function M.retry(opts)
   })
 end
 
-local function job_id_under_cursor()
-  local line = vim.api.nvim_get_current_line()
-  return line:match("#(%d+)")
-end
-
 function M.list()
   local root = repo_root()
   if not root then
@@ -246,7 +242,7 @@ function M.list()
       q = buffer.close_current,
 
       ["<CR>"] = function()
-        local job_id = job_id_under_cursor()
+        local job_id = navigation.job_id_under_cursor()
         if not job_id then
           notification.error("No job id under cursor")
           return
@@ -256,7 +252,7 @@ function M.list()
         })
       end,
       l = function()
-        local job_id = job_id_under_cursor()
+        local job_id = navigation.job_id_under_cursor()
         if not job_id then
           notification.error("No job id under cursor")
           return
