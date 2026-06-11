@@ -39,7 +39,7 @@ function M.run()
   local output, err = glab.run({
     "pipeline",
     "run",
-    "--ref",
+    "-b",
     branch,
   }, {
     cwd = root,
