@@ -191,6 +191,11 @@ function M.retry(opts)
   })
 end
 
+local function job_id_under_cursor()
+  local line = vim.api.nvim_get_current_line()
+  return line:match("#(%d+)")
+end
+
 function M.list()
   local root = repo_root()
   if not root then
@@ -237,6 +242,28 @@ function M.list()
     title = "GitLab Jobs",
     filetype = "gitlab",
     lines = lines,
+    keymaps = {
+      q = buffer.close_current,
+
+      ["<CR>"] = function()
+        local job_id = job_id_under_cursor()
+        if not job_id then
+          notification.error("No job id under cursor")
+          return
+        end
+        require("gitlab.ci.job_details").show({
+          job_id = job_id,
+        })
+      end,
+      l = function()
+        local job_id = job_id_under_cursor()
+        if not job_id then
+          notification.error("No job id under cursor")
+          return
+        end
+        show_logs(root, job_id)
+      end,
+    },
   })
 end
 

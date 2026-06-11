@@ -2,6 +2,24 @@ local config = require("gitlab.config")
 
 local M = {}
 
+local function set_keymaps(buf, keymaps)
+  if not keymaps then
+    return
+  end
+
+  for lhs, rhs in pairs(keymaps) do
+    vim.keymap.set("n", lhs, rhs, {
+      buffer = buf,
+      silent = true,
+      nowait = true,
+    })
+  end
+end
+
+function M.close_current()
+  vim.cmd("close")
+end
+
 function M.show(opts)
   opts = opts or {}
 
@@ -23,6 +41,8 @@ function M.show(opts)
 
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].modifiable = false
+
+  set_keymaps(buf, opts.keymaps)
 end
 
 return M
