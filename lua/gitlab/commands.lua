@@ -4,6 +4,8 @@ local pipelines = require("gitlab.ci.pipelines")
 local jobs = require("gitlab.ci.jobs")
 local notification = require("gitlab.ui.notification")
 local health = require("gitlab.ui.health")
+local details = require("gitlab.ci.details")
+
 
 local M = {}
 
@@ -18,20 +20,28 @@ local function gitlab_auth()
   notification.info("GitLab token detected")
 end
 
+local function command(name, callback, opts)
+  vim.api.nvim_create_user_command(name, callback, opts or {})
+end
+
 function M.setup()
-  vim.api.nvim_create_user_command("GitlabAuth", gitlab_auth, {})
-  vim.api.nvim_create_user_command("GitlabHealth", health.run, {})
-
-  vim.api.nvim_create_user_command("GitlabCiValidate", lint.validate, {})
-
-  vim.api.nvim_create_user_command("GitlabPipelineRun", pipelines.run, {})
-  vim.api.nvim_create_user_command("GitlabPipelineList", pipelines.list, {})
-  vim.api.nvim_create_user_command("GitlabPipelineStatus", pipelines.status, {})
-
-  vim.api.nvim_create_user_command("GitlabJobRetry", jobs.retry, {
+  command("GitlabAuth", gitlab_auth, {})
+  command("GitlabHealth", health.run, {})
+  command("GitlabCiValidate", lint.validate, {})
+  command("GitlabPipelineRun", pipelines.run, {})
+  command("GitlabPipelineList", pipelines.list, {})
+  command("GitlabPipelineStatus", pipelines.status, {})
+  command("GitlabJobRetry", jobs.retry, {
     nargs = "?",
   })
-  vim.api.nvim_create_user_command("GitlabJobLogs", jobs.logs, {
+  command("GitlabJobLogs", jobs.logs, {
+    nargs = "?",
+  })
+  command("GitlabPipelineDetails", function(opts)
+    details.show({
+      pipeline_id = opts.args,
+    })
+  end, {
     nargs = "?",
   })
 end

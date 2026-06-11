@@ -50,4 +50,16 @@ function M.pipeline_jobs(pipeline_id, opts)
   })
 end
 
+function M.pipeline(pipeline_id, opts)
+  opts = opts or {}
+
+  if not pipeline_id then
+    return nil, "pipeline_id is required"
+  end
+
+  return M.get("projects/:id/pipelines/" .. tostring(pipeline_id), {
+    cwd = opts.cwd,
+  })
+end
+
 return M
