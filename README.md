@@ -1,60 +1,39 @@
 # nvim-gitlab
 
-GitLab integration for Neovim.
+Interactive GitLab CI/CD workflows for Neovim powered by `glab`.
 
-Current focus is GitLab CI/CD workflows powered by `glab`.
+Browse pipelines, inspect jobs, view logs, download artifacts, and trigger CI actions directly from Neovim.
 
 ## Features
 
-- Validate `.gitlab-ci.yml`
-- Show latest pipeline status
+### CI Pipelines
+
+- Run GitLab pipelines
 - List project pipelines
-- Run pipelines
-- Browse jobs from the latest pipeline
-- Open job logs
-- Health checks
-- GitLab API integration
+- Show latest pipeline status
+- Open pipeline details
+- Re-run pipelines
 
-## Requirements
+### CI Jobs
 
-- Neovim 0.10+
-- git
-- glab
-- GitLab Personal Access Token
+- List jobs for the latest pipeline
+- Open job details
+- View job logs
+- Retry jobs
+- Download job artifacts
 
-## Configuration
+### Interactive Navigation
 
-Expose your token:
+- Pipeline → Job drilldown
+- Reusable scratch window
+- View history navigation (`b`)
+- Context-aware actions
 
-```bash
-export GITLAB_TOKEN="your-token"
-```
+### Health Checks
 
-## Installation
-
-### lazy.nvim
-
-```lua
-{
-    "mm4cN/gitlab.nvim",
-    config = function()
-        require("gitlab").setup()
-    end,
-}
-```
-
-### Local development
-
-```lua
-{
-    dir = "~/Projects/gitlab.nvim",
-    name = "gitlab.nvim",
-    lazy = false,
-    config = function()
-        require("gitlab").setup()
-    end,
-}
-```
+- GitLab token validation
+- glab availability checks
+- CI configuration validation
 
 ## Setup
 
@@ -63,12 +42,17 @@ require("gitlab").setup({
     glab_binary = "glab",
     default_branch = "main",
     ci_file = ".gitlab-ci.yml",
+
     picker = "vim_ui",
+
     scratch_height = 15,
+
     gitlab_token_env = "GITLAB_TOKEN",
+
+    artifacts_dir = "gitlab-artifacts",
+    extract_artifacts = true,
 })
 ```
-
 ## Commands
 
 ### Health
@@ -79,89 +63,61 @@ require("gitlab").setup({
 :GitlabAuth
 ```
 
-### CI/CD
+### CI Validation
 
 ```vim
 :GitlabCiValidate
-:GitlabPipelineStatus
-:GitlabPipelineList
+```
+
+### Pipelines
+
+```vim
 :GitlabPipelineRun
+:GitlabPipelineList
+:GitlabPipelineStatus
+:GitlabPipelineDetails
+:GitlabPipelineDetails <pipeline_id>
+```
+
+### Jobs
+
+```vim
+:GitlabJobList
+
 :GitlabJobLogs
 :GitlabJobLogs <job_id>
+
 :GitlabJobRetry
+:GitlabJobRetry <job_id>
+
+:GitlabJobDetails <job_id>
+
+:GitlabJobArtifacts <job_id>
 ```
 
-## Examples
+### Interactive Views
 
-Validate CI configuration:
+Pipeline and job views support:
 
-```vim
-:GitlabCiValidate
-```
+- `<CR>` Open details
+- `L` Open logs
+- `A` Download artifacts
+- `R` Retry job / Re-run pipeline
+- `b` Navigate back
+- `q` Close view
 
-Show latest pipeline status:
 
-```vim
-:GitlabPipelineStatus
-```
+## Planned Features
 
-Browse jobs from the latest pipeline and open logs:
+### CI/CD
 
-```vim
-:GitlabJobLogs
-```
+- View refresh
+- Artifact browser
+- Better pipeline formatting
 
-Open logs for a specific job:
+### Merge Requests
 
-```vim
-:GitlabJobLogs 123456789
-```
-
-## Health Checks
-
-Standard Neovim health check:
-
-```vim
-:checkhealth gitlab
-```
-
-Detailed plugin health information:
-
-```vim
-:GitlabHealth
-```
-
-## Roadmap
-
-### v0.2.0
-
-- Pipeline picker
-- Open pipeline in browser
-- Better status formatting
-
-### v0.3.0
-
-- Retry jobs
-- Cancel jobs
-- Cancel pipelines
-- Download artifacts
-
-### v0.4.0
-
-- Statusline integration
-- Pipeline cache
-
-### v0.5.0
-
-- Merge Requests
-- MR checkout
+- MR list
 - MR details
-
-### v0.6.0
-
-- Forge integration
-- Pipeline failure analysis
-
-## License
-
-MIT
+- MR checkout
+- MR pipelines

@@ -1,13 +1,9 @@
-:GitlabCiValidate	gitlab.txt	/*:GitlabCiValidate*
-:GitlabJobLogs	gitlab.txt	/*:GitlabJobLogs*
-:GitlabJobRetry	gitlab.txt	/*:GitlabJobRetry*
-:GitlabPipelineList	gitlab.txt	/*:GitlabPipelineList*
-:GitlabPipelineRun	gitlab.txt	/*:GitlabPipelineRun*
-:GitlabPipelineStatus	gitlab.txt	/*:GitlabPipelineStatus*
 gitlab-commands	gitlab.txt	/*gitlab-commands*
+gitlab-configuration	gitlab.txt	/*gitlab-configuration*
 gitlab-contents	gitlab.txt	/*gitlab-contents*
 gitlab-health	gitlab.txt	/*gitlab-health*
+gitlab-jobs	gitlab.txt	/*gitlab-jobs*
+gitlab-pipelines	gitlab.txt	/*gitlab-pipelines*
 gitlab-requirements	gitlab.txt	/*gitlab-requirements*
-gitlab-roadmap	gitlab.txt	/*gitlab-roadmap*
-gitlab-setup	gitlab.txt	/*gitlab-setup*
+gitlab-views	gitlab.txt	/*gitlab-views*
 gitlab.nvim	gitlab.txt	/*gitlab.nvim*
