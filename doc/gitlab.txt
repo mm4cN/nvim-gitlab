@@ -1,0 +1,178 @@
+## `doc/gitlab.txt`
+
+```text
+*gitlab.nvim* GitLab helper for Neovim
+
+==============================================================================
+CONTENTS                                                          *gitlab-contents*
+
+1. Requirements                                      |gitlab-requirements|
+2. Setup                                             |gitlab-setup|
+3. Commands                                          |gitlab-commands|
+4. Health                                            |gitlab-health|
+5. Roadmap                                           |gitlab-roadmap|
+
+==============================================================================
+REQUIREMENTS                                                  *gitlab-requirements*
+
+gitlab.nvim requires:
+
+- Neovim 0.10+
+- git
+- glab
+- GitLab token exposed as an environment variable
+
+Default token variable:
+
+>
+  GITLAB_TOKEN
+<
+
+Example:
+
+>
+  export GITLAB_TOKEN="your-token"
+<
+
+==============================================================================
+SETUP                                                              *gitlab-setup*
+
+Using lazy.nvim:
+
+>
+  {
+    "mm4cN/gitlab.nvim",
+    config = function()
+      require("gitlab").setup({
+        gitlab_token_env = "GITLAB_TOKEN",
+      })
+    end,
+  }
+<
+
+Default config:
+
+>
+  require("gitlab").setup({
+    glab_binary = "glab",
+    default_branch = "main",
+    ci_file = ".gitlab-ci.yml",
+    picker = "vim_ui",
+    scratch_height = 15,
+    gitlab_token_env = "GITLAB_TOKEN",
+  })
+<
+
+==============================================================================
+COMMANDS                                                        *gitlab-commands*
+
+Health:
+
+>
+  :checkhealth gitlab
+  :GitlabHealth
+  :GitlabAuth
+<
+
+CI/CD:
+
+>
+  :GitlabCiValidate
+  :GitlabPipelineStatus
+  :GitlabPipelineList
+  :GitlabPipelineRun
+  :GitlabJobLogs
+  :GitlabJobLogs <job_id>
+  :GitlabJobRetry
+<
+
+                                                        *:GitlabCiValidate*
+:GitlabCiValidate
+
+Validate configured GitLab CI file. By default:
+
+>
+  .gitlab-ci.yml
+<
+
+Uses glab under the hood.
+
+                                                    *:GitlabPipelineStatus*
+:GitlabPipelineStatus
+
+Show latest pipeline status for the current branch.
+
+                                                      *:GitlabPipelineList*
+:GitlabPipelineList
+
+List recent pipelines for the current project.
+
+                                                       *:GitlabPipelineRun*
+:GitlabPipelineRun
+
+Run pipeline for the current branch.
+
+                                                         *:GitlabJobLogs*
+:GitlabJobLogs [job_id]
+
+Without argument, fetches latest pipeline for the current branch, shows jobs,
+and opens logs for the selected job.
+
+With argument, opens logs for the given job id.
+
+                                                         *:GitlabJobRetry*
+:GitlabJobRetry [job_id]
+
+Retry selected job by id.
+
+==============================================================================
+HEALTH                                                            *gitlab-health*
+
+Run:
+
+>
+  :checkhealth gitlab
+<
+
+This checks:
+
+- git executable
+- glab executable
+- configured token env
+- git repository context
+- current branch
+- origin remote
+- GitLab API reachability
+
+For a scratch-buffer version:
+
+>
+  :GitlabHealth
+<
+
+==============================================================================
+ROADMAP                                                          *gitlab-roadmap*
+
+v0.2.0:
+
+- GitlabOpenPipeline
+- GitlabPipelineJobs
+- Better picker formatting
+
+v0.3.0:
+
+- Job retry/cancel
+- Pipeline cancel
+- Artifact download
+
+v0.4.0:
+
+- Statusline integration
+- Cached pipeline status
+
+v0.5.0:
+
+- Merge request workflows
+
+==============================================================================
+vim:tw=78:ts=2:sw=2:et:ft=help:norl:
