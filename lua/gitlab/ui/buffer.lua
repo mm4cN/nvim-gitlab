@@ -3,7 +3,16 @@ local state = require("gitlab.ui.state")
 
 local M = {}
 
-local known_keys = { "q", "<CR>", "l", "b" }
+local known_keys = {
+  "q",
+  "b",
+  "r",
+  "A",
+  "L",
+  "R",
+  "X",
+  "<CR>",
+}
 
 local function set_keymaps(buf, keymaps)
   if not keymaps then

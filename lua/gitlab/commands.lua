@@ -6,6 +6,7 @@ local notification = require("gitlab.ui.notification")
 local health = require("gitlab.ui.health")
 local details = require("gitlab.ci.details")
 local job_details = require("gitlab.ci.job_details")
+local artifacts = require("gitlab.ci.artifacts")
 
 local M = {}
 
@@ -51,6 +52,13 @@ function M.setup()
   })
   command("GitlabJobDetails", function(opts)
     job_details.show({
+      job_id = opts.args,
+    })
+  end, {
+    nargs = 1,
+  })
+  command("GitlabJobArtifacts", function(opts)
+    artifacts.download({
       job_id = opts.args,
     })
   end, {

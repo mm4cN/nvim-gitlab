@@ -1,12 +1,12 @@
 local api = require("gitlab.api")
-local git = require("gitlab.git")
+local artifacts = require("gitlab.ci.artifacts")
 local buffer = require("gitlab.ui.buffer")
-local notification = require("gitlab.ui.notification")
 local constants = require("gitlab.constants")
-
+local git = require("gitlab.git")
 local job_details = require("gitlab.ci.job_details")
 local jobs_module = require("gitlab.ci.jobs")
 local navigation = require("gitlab.ui.navigation")
+local notification = require("gitlab.ui.notification")
 
 local M = {}
 
@@ -93,6 +93,7 @@ local function show_pipeline(root, pipeline)
     keymaps = {
       q = buffer.close_current,
       b = buffer.back,
+
       ["<CR>"] = function()
         local job_id = navigation.job_id_under_cursor()
 
@@ -106,7 +107,7 @@ local function show_pipeline(root, pipeline)
         })
       end,
 
-      l = function()
+      L = function()
         local job_id = navigation.job_id_under_cursor()
 
         if not job_id then
@@ -116,6 +117,18 @@ local function show_pipeline(root, pipeline)
 
         jobs_module.logs({
           args = job_id,
+        })
+      end,
+
+      A = function()
+        local job_id = navigation.job_id_under_cursor()
+        if not job_id then
+          notification.error("No job id under cursor")
+          return
+        end
+
+        artifacts.download({
+          job_id = job_id,
         })
       end,
     },

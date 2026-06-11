@@ -7,6 +7,8 @@ M.options = {
   ci_file = ".gitlab-ci.yml",
   picker = "vim_ui",
   scratch_height = 15,
+  artifacts_dir = "gitlab-artifacts",
+  extract_artifacts = true,
 }
 
 function M.setup(opts)

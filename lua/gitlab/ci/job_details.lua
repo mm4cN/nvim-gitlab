@@ -1,8 +1,9 @@
 local api = require("gitlab.api")
-local git = require("gitlab.git")
+local artifacts = require("gitlab.ci.artifacts")
 local buffer = require("gitlab.ui.buffer")
-local notification = require("gitlab.ui.notification")
 local constants = require("gitlab.constants")
+local git = require("gitlab.git")
+local notification = require("gitlab.ui.notification")
 
 local M = {}
 
@@ -113,6 +114,12 @@ function M.show(opts)
     keymaps = {
       q = buffer.close_current,
       b = buffer.back,
+
+      A = function()
+        artifacts.download({
+          job_id = job.id,
+        })
+      end,
     },
   })
 end
