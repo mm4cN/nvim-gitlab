@@ -106,10 +106,14 @@ function M.show(opts)
     "  :GitlabJobRetry " .. tostring(job.id),
   }
 
-  buffer.show({
+  buffer.push({
     title = "GitLab Job #" .. tostring(job.id),
     filetype = "gitlab",
     lines = lines,
+    keymaps = {
+      q = buffer.close_current,
+      b = buffer.back,
+    },
   })
 end
 

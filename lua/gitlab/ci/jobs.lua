@@ -83,10 +83,14 @@ local function show_logs(root, job_id)
     return
   end
 
-  buffer.show({
-    title    = "GitLab Job " .. tostring(job_id),
+  buffer.push({
+    title = "GitLab Job " .. tostring(job_id),
     filetype = "log",
-    lines    = clean_logs(output),
+    lines = clean_logs(output),
+    keymaps = {
+      q = buffer.close_current,
+      b = buffer.back,
+    },
   })
 end
 
@@ -240,7 +244,7 @@ function M.list()
     lines = lines,
     keymaps = {
       q = buffer.close_current,
-
+      b = buffer.back,
       ["<CR>"] = function()
         local job_id = navigation.job_id_under_cursor()
         if not job_id then

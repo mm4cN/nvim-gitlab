@@ -92,7 +92,7 @@ local function show_pipeline(root, pipeline)
 
     keymaps = {
       q = buffer.close_current,
-
+      b = buffer.back,
       ["<CR>"] = function()
         local job_id = navigation.job_id_under_cursor()
 

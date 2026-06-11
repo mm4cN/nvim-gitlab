@@ -3,6 +3,8 @@ local state = require("gitlab.ui.state")
 
 local M = {}
 
+local known_keys = { "q", "<CR>", "l", "b" }
+
 local function set_keymaps(buf, keymaps)
   if not keymaps then
     return
@@ -18,7 +20,7 @@ local function set_keymaps(buf, keymaps)
 end
 
 local function clear_keymaps(buf)
-  for _, lhs in ipairs({ "q", "<CR>", "l", "<BS>" }) do
+  for _, lhs in ipairs(known_keys) do
     pcall(vim.keymap.del, "n", lhs, { buffer = buf })
   end
 end
@@ -47,21 +49,11 @@ local function ensure_window()
   return open_window()
 end
 
-function M.close_current()
-  if state.win and vim.api.nvim_win_is_valid(state.win) then
-    vim.api.nvim_win_close(state.win, true)
-  else
-    vim.cmd("close")
-  end
+local function render(view)
+  view = view or {}
 
-  state.reset()
-end
-
-function M.show(opts)
-  opts = opts or {}
-
-  local title = opts.title or "gitlab.nvim"
-  local lines = opts.lines or {}
+  local title = view.title or "gitlab.nvim"
+  local lines = view.lines or {}
 
   local buf, _ = ensure_window()
 
@@ -72,13 +64,51 @@ function M.show(opts)
   vim.bo[buf].buftype = "nofile"
   vim.bo[buf].bufhidden = "wipe"
   vim.bo[buf].swapfile = false
-  vim.bo[buf].filetype = opts.filetype or "gitlab"
+  vim.bo[buf].filetype = view.filetype or "gitlab"
 
   clear_keymaps(buf)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-  set_keymaps(buf, opts.keymaps)
+  set_keymaps(buf, view.keymaps)
 
   vim.bo[buf].modifiable = false
+end
+
+function M.show(opts)
+  state.replace(opts or {})
+  render(state.current)
+end
+
+function M.push(view)
+  state.push(view or {})
+  render(state.current)
+end
+
+function M.replace(view)
+  state.replace(view or {})
+  render(state.current)
+end
+
+function M.back()
+  local previous = state.pop()
+
+  if not previous then
+    vim.notify("No previous GitLab view", vim.log.levels.INFO, {
+      title = "gitlab.nvim",
+    })
+    return
+  end
+
+  render(previous)
+end
+
+function M.close_current()
+  if state.win and vim.api.nvim_win_is_valid(state.win) then
+    vim.api.nvim_win_close(state.win, true)
+  else
+    vim.cmd("close")
+  end
+
+  state.reset()
 end
 
 return M
