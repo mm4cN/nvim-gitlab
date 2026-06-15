@@ -2,7 +2,7 @@ local actions = require("gitlab.ci.actions")
 local api = require("gitlab.api")
 local artifacts = require("gitlab.ci.artifacts")
 local buffer = require("gitlab.ui.buffer")
-local constants = require("gitlab.constants")
+local format = require("gitlab.ci.format")
 local git = require("gitlab.git")
 local notification = require("gitlab.ui.notification")
 
@@ -16,43 +16,6 @@ local function repo_root()
   end
 
   return root
-end
-
-local function status_icon(status)
-  return constants.pipeline_status_icons[status] or "?"
-end
-
-local function value(v)
-  if v == nil or v == "" then
-    return "unknown"
-  end
-
-  return tostring(v)
-end
-
-local function short_sha(sha)
-  if not sha or sha == "" then
-    return "unknown"
-  end
-
-  return string.sub(sha, 1, 8)
-end
-
-local function format_duration(seconds)
-  if not seconds then
-    return "unknown"
-  end
-
-  seconds = math.floor(seconds)
-
-  local minutes = math.floor(seconds / 60)
-  local rest = seconds % 60
-
-  if minutes > 0 then
-    return string.format("%dm%02ds", minutes, rest)
-  end
-
-  return tostring(rest) .. "s"
 end
 
 function M.show(opts)
@@ -85,23 +48,23 @@ function M.show(opts)
   local lines = {
     "Job #" .. tostring(job.id),
     "",
-    "Name:      " .. value(job.name),
-    "Status:    " .. status_icon(job.status) .. " " .. value(job.status),
-    "Stage:     " .. value(job.stage),
-    "Ref:       " .. value(job.ref),
-    "Duration:  " .. format_duration(job.duration),
-    "Started:   " .. value(job.started_at),
-    "Finished:  " .. value(job.finished_at),
+    "Name:      " .. format.value(job.name),
+    "Status:    " .. format.status_icon(job.status) .. " " .. format.value(job.status),
+    "Stage:     " .. format.value(job.stage),
+    "Ref:       " .. format.value(job.ref),
+    "Duration:  " .. format.duration(job.duration),
+    "Started:   " .. format.value(job.started_at),
+    "Finished:  " .. format.value(job.finished_at),
     "",
     "Pipeline:",
-    "  ID:      " .. value(pipeline.id),
-    "  Status:  " .. status_icon(pipeline.status) .. " " .. value(pipeline.status),
-    "  Ref:     " .. value(pipeline.ref),
+    "  ID:      " .. format.value(pipeline.id),
+    "  Status:  " .. format.status_icon(pipeline.status) .. " " .. format.value(pipeline.status),
+    "  Ref:     " .. format.value(pipeline.ref),
     "",
     "Commit:",
-    "  SHA:     " .. short_sha(commit.id or commit.sha),
-    "  Title:   " .. value(commit.title),
-    "  Author:  " .. value(commit.author_name),
+    "  SHA:     " .. format.short_sha(commit.id or commit.sha),
+    "  Title:   " .. format.value(commit.title),
+    "  Author:  " .. format.value(commit.author_name),
     "",
     "Actions:",
     "  :GitlabJobLogs " .. tostring(job.id),

@@ -1,11 +1,11 @@
 local actions = require("gitlab.ci.actions")
 local artifacts = require("gitlab.ci.artifacts")
+local format = require("gitlab.ci.format")
 local git = require("gitlab.git")
 local glab = require("gitlab.glab")
 local buffer = require("gitlab.ui.buffer")
 local notification = require("gitlab.ui.notification")
 local picker = require("gitlab.ui.picker")
-local constants = require("gitlab.constants")
 local api = require("gitlab.api")
 local navigation = require("gitlab.ui.navigation")
 
@@ -102,17 +102,6 @@ local function show_logs(root, job_id)
   })
 end
 
-local function format_job(job)
-  local icon = constants.pipeline_status_icons[job.status] or "?"
-  return string.format(
-    "%s %s [%s] #%s",
-    icon,
-    job.name or "unknown",
-    job.status or "unknown",
-    tostring(job.id)
-  )
-end
-
 function M.logs(opts)
   local root = repo_root()
   if not root then
@@ -154,7 +143,7 @@ function M.logs(opts)
 
   picker.select(jobs, {
     prompt = "GitLab job logs",
-    format_item = format_job,
+    format_item = format.job,
   }, function(job)
     if not job then
       return
@@ -243,7 +232,7 @@ function M.list()
   }
 
   for _, job in ipairs(jobs) do
-    table.insert(lines, format_job(job))
+    table.insert(lines, format.job(job))
   end
 
   local hints = {

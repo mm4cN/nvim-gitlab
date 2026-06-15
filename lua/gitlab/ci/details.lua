@@ -2,7 +2,7 @@ local api = require("gitlab.api")
 local actions = require("gitlab.ci.actions")
 local artifacts = require("gitlab.ci.artifacts")
 local buffer = require("gitlab.ui.buffer")
-local constants = require("gitlab.constants")
+local format = require("gitlab.ci.format")
 local git = require("gitlab.git")
 local job_details = require("gitlab.ci.job_details")
 local jobs_module = require("gitlab.ci.jobs")
@@ -33,28 +33,6 @@ local function current_branch()
   return branch
 end
 
-local function short_sha(sha)
-  if not sha or sha == "" then
-    return "unknown"
-  end
-
-  return string.sub(sha, 1, 8)
-end
-
-local function status_icon(status)
-  return constants.pipeline_status_icons[status] or "?"
-end
-
-local function format_job(job)
-  return string.format(
-    "  %s %s [%s] #%s",
-    status_icon(job.status),
-    job.name or "unknown",
-    job.status or "unknown",
-    tostring(job.id)
-  )
-end
-
 local function show_pipeline(root, pipeline)
   local pipeline_jobs, jobs_err = api.pipeline_jobs(pipeline.id, {
     cwd = root,
@@ -68,9 +46,9 @@ local function show_pipeline(root, pipeline)
   local lines = {
     "Pipeline #" .. tostring(pipeline.id),
     "",
-    "Status: " .. status_icon(pipeline.status) .. " " .. tostring(pipeline.status),
+    "Status: " .. format.status_icon(pipeline.status) .. " " .. tostring(pipeline.status),
     "Ref:     " .. tostring(pipeline.ref),
-    "SHA:     " .. short_sha(pipeline.sha),
+    "SHA:     " .. format.short_sha(pipeline.sha),
     "Created: " .. tostring(pipeline.created_at),
     "Updated: " .. tostring(pipeline.updated_at),
     "",
@@ -82,7 +60,7 @@ local function show_pipeline(root, pipeline)
     table.insert(lines, "  No jobs found")
   else
     for _, job in ipairs(pipeline_jobs) do
-      table.insert(lines, format_job(job))
+      table.insert(lines, format.job(job))
     end
   end
 
