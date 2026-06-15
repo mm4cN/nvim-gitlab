@@ -13,6 +13,15 @@ function M.request(path, opts)
     })
   end
 
+  if opts.fields then
+    for key, value in pairs(opts.fields) do
+      vim.list_extend(args, {
+        "-f",
+        key .. "=" .. tostring(value),
+      })
+    end
+  end
+
   return glab.run_json(args, {
     cwd = opts.cwd,
   })
@@ -94,6 +103,22 @@ function M.pipelines(opts)
 
   return M.get("projects/:id/pipelines?" .. query, {
     cwd = opts.cwd,
+  })
+end
+
+function M.run_pipeline(opts)
+  opts = opts or {}
+
+  if not opts.ref or opts.ref == "" then
+    return nil, "ref is required"
+  end
+
+  return M.request("projects/:id/pipeline", {
+    cwd = opts.cwd,
+    method = "POST",
+    fields = {
+      ref = opts.ref,
+    },
   })
 end
 

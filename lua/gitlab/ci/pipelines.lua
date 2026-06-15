@@ -4,7 +4,6 @@ local buffer = require("gitlab.ui.buffer")
 local details = require("gitlab.ci.details")
 local format = require("gitlab.ci.format")
 local git = require("gitlab.git")
-local glab = require("gitlab.glab")
 local navigation = require("gitlab.ui.navigation")
 local notification = require("gitlab.ui.notification")
 
@@ -41,24 +40,26 @@ function M.run()
     return
   end
 
-  local output, err = glab.run({
-    "pipeline",
-    "run",
-    "-b",
-    branch,
-  }, {
+  local pipeline, err = api.run_pipeline({
     cwd = root,
+    ref = branch,
   })
 
-  if err then
+  if not pipeline then
     notification.error(err)
     return
   end
 
+  local lines = {
+    "Pipeline created",
+    "",
+    format.pipeline(pipeline),
+  }
+
   buffer.show({
     title = "GitLab Pipeline Run",
-    filetype = "text",
-    lines = vim.split(output, "\n", { plain = true }),
+    filetype = "gitlab",
+    lines = lines,
   })
 end
 
