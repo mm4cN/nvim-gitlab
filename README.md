@@ -1,8 +1,25 @@
 # nvim-gitlab
 
-Interactive GitLab CI/CD workflows for Neovim powered by `glab`.
+Interactive GitLab CI/CD workflows for Neovim powered by `glab` and GitLab APIs.
 
 Browse pipelines, inspect jobs, view logs, download artifacts, and trigger CI actions directly from Neovim.
+
+## Focus
+
+nvim-gitlab is intentionally focused on GitLab CI/CD workflows.
+
+Current features include:
+
+- Pipeline browsing
+- Pipeline details
+- Job browsing
+- Job details
+- Job logs
+- Job retry
+- Pipeline re-run
+- Artifact downloads
+
+Merge Requests, Issues, and project management features are currently out of scope.
 
 ## Requirements
 
