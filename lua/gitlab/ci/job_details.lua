@@ -5,6 +5,7 @@ local buffer = require("gitlab.ui.buffer")
 local format = require("gitlab.ci.format")
 local git = require("gitlab.git")
 local notification = require("gitlab.ui.notification")
+local picker = require("gitlab.ui.picker")
 
 local M = {}
 
@@ -18,18 +19,76 @@ local function repo_root()
   return root
 end
 
+local function current_branch()
+  local branch, err = git.branch()
+
+  if not branch then
+    notification.error(err)
+    return nil
+  end
+
+  return branch
+end
+
+local function pick_job(root, callback)
+  local branch = current_branch()
+
+  if not branch then
+    return
+  end
+
+  local pipeline, pipeline_err = api.latest_pipeline({
+    cwd = root,
+    ref = branch,
+  })
+
+  if not pipeline then
+    notification.error(pipeline_err)
+    return
+  end
+
+  local jobs, jobs_err = api.pipeline_jobs(pipeline.id, {
+    cwd = root,
+  })
+
+  if not jobs then
+    notification.error(jobs_err)
+    return
+  end
+
+  if #jobs == 0 then
+    notification.error("No jobs found for pipeline: " .. tostring(pipeline.id))
+    return
+  end
+
+  picker.select(jobs, {
+    prompt = "GitLab jobs",
+    format_item = format.job,
+  }, function(job)
+    if not job then
+      return
+    end
+
+    callback(job)
+  end)
+end
+
 function M.show(opts)
   opts = opts or {}
 
   local job_id = opts.job_id
+  local root = repo_root()
 
-  if not job_id or job_id == "" then
-    notification.error("job_id is required")
+  if not root then
     return
   end
 
-  local root = repo_root()
-  if not root then
+  if not job_id or job_id == "" then
+    pick_job(root, function(job)
+      M.show({
+        job_id = job.id,
+      })
+    end)
     return
   end
 

@@ -55,7 +55,7 @@ function M.setup()
       job_id = opts.args,
     })
   end, {
-    nargs = 1,
+    nargs = "?",
   })
   command("GitlabJobArtifacts", function(opts)
     artifacts.download({

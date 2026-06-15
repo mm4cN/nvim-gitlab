@@ -8,6 +8,7 @@ local job_details = require("gitlab.ci.job_details")
 local jobs_module = require("gitlab.ci.jobs")
 local navigation = require("gitlab.ui.navigation")
 local notification = require("gitlab.ui.notification")
+local picker = require("gitlab.ui.picker")
 
 local M = {}
 
@@ -20,17 +21,6 @@ local function repo_root()
   end
 
   return root
-end
-
-local function current_branch()
-  local branch, err = git.branch()
-
-  if not branch then
-    notification.error(err)
-    return nil
-  end
-
-  return branch
 end
 
 local function show_pipeline(root, pipeline)
@@ -128,6 +118,34 @@ local function show_pipeline(root, pipeline)
   })
 end
 
+local function pick_pipeline(root, callback)
+  local pipelines, err = api.pipelines({
+    cwd = root,
+    per_page = 20,
+  })
+
+  if not pipelines then
+    notification.error(err)
+    return
+  end
+
+  if #pipelines == 0 then
+    notification.error("No pipelines found")
+    return
+  end
+
+  picker.select(pipelines, {
+    prompt = "GitLab pipelines",
+    format_item = format.pipeline,
+  }, function(pipeline)
+    if not pipeline then
+      return
+    end
+
+    callback(pipeline)
+  end)
+end
+
 function M.show(opts)
   opts = opts or {}
 
@@ -151,23 +169,9 @@ function M.show(opts)
     return
   end
 
-  local branch = current_branch()
-
-  if not branch then
-    return
-  end
-
-  local pipeline, err = api.latest_pipeline({
-    cwd = root,
-    ref = branch,
-  })
-
-  if not pipeline then
-    notification.error(err)
-    return
-  end
-
-  show_pipeline(root, pipeline)
+  pick_pipeline(root, function(pipeline)
+    show_pipeline(root, pipeline)
+  end)
 end
 
 return M

@@ -2,6 +2,24 @@ local constants = require("gitlab.constants")
 
 local M = {}
 
+function M.datetime(value)
+  if not value or value == "" then
+    return "unknown"
+  end
+
+  local normalized = value
+      :gsub("%.%d+Z$", "")
+      :gsub("Z$", "")
+
+  local ts = vim.fn.strptime("%Y-%m-%dT%H:%M:%S", normalized)
+
+  if ts <= 0 then
+    return value
+  end
+
+  return os.date("%Y-%m-%d %H:%M", ts)
+end
+
 function M.status_icon(status)
   return constants.pipeline_status_icons[status] or "?"
 end
@@ -51,11 +69,12 @@ end
 
 function M.pipeline(pipeline)
   return string.format(
-    "%s #%s %s [%s]",
+    "%s #%s %s [%s] %s",
     M.status_icon(pipeline.status),
     tostring(pipeline.id),
     pipeline.ref or "unknown",
-    pipeline.status or "unknown"
+    pipeline.status or "unknown",
+    M.datetime(pipeline.created_at)
   )
 end
 
