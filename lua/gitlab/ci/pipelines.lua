@@ -165,10 +165,18 @@ function M.status()
     table.insert(lines, format.pipeline(pipelines[1]))
   end
 
+  local hints = {
+    { key = "q", label = "Quit" },
+  }
+
   buffer.show({
     title = "GitLab Pipeline Status",
     filetype = "gitlab",
     lines = lines,
+    hints = hints,
+    keymaps = {
+      q = buffer.close_current,
+    },
   })
 end
 
