@@ -35,4 +35,47 @@ function M.api_json(path, opts)
   })
 end
 
+function M.auth_status(host, opts)
+  opts = opts or {}
+
+  local args = {
+    "auth",
+    "status",
+  }
+
+  if host and host ~= "" then
+    vim.list_extend(args, {
+      "--hostname",
+      host,
+    })
+  end
+
+  return M.run(args, {
+    cwd = opts.cwd,
+  })
+end
+
+function M.auth_login(host, token, opts)
+  opts = opts or {}
+
+  if not host or host == "" then
+    return nil, "host is required"
+  end
+
+  if not token or token == "" then
+    return nil, "token is required"
+  end
+
+  return M.run({
+    "auth",
+    "login",
+    "--hostname",
+    host,
+    "--stdin",
+  }, {
+    cwd = opts.cwd,
+    stdin = token .. "\n",
+  })
+end
+
 return M

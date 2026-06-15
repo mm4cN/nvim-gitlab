@@ -13,6 +13,21 @@ local known_keys = {
   "<CR>",
 }
 
+local function normalize_lines(lines)
+  local normalized = {}
+
+  for _, line in ipairs(lines or {}) do
+    local chunks = vim.split(tostring(line), "\n", {
+      plain = true,
+      trimempty = false,
+    })
+
+    vim.list_extend(normalized, chunks)
+  end
+
+  return normalized
+end
+
 local function with_hints(lines, hints)
   if not hints or #hints == 0 then
     return lines
@@ -83,7 +98,7 @@ local function render(view)
   view = view or {}
 
   local title = view.title or "gitlab.nvim"
-  local lines = with_hints(view.lines or {}, view.hints)
+  local lines = with_hints(normalize_lines(view.lines or {}), view.hints)
 
   local buf, _ = ensure_window()
 

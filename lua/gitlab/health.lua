@@ -63,6 +63,29 @@ function M.check()
     warn(remote_err)
   end
 
+  local host, host_err = git.remote_host()
+
+  if host then
+    if not auth.is_gitlab_host(host) then
+      warn("Remote host does not look like a GitLab host: " .. host)
+    else
+      ok("GitLab host: " .. host)
+
+      local _, auth_err = glab.auth_status(host, {
+        cwd = root,
+      })
+
+      if auth_err then
+        error("glab is not authenticated for " .. host)
+        health.info("Run: glab auth login --hostname " .. host)
+      else
+        ok("glab authenticated for " .. host)
+      end
+    end
+  else
+    warn(host_err)
+  end
+
   local user, user_err = glab.run_json({ "api", "user" }, {
     cwd = root,
   })

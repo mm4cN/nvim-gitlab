@@ -50,6 +50,29 @@ function M.run()
   local remote, remote_err = git.remote_url()
   table.insert(lines, remote and ok("origin", remote) or fail("origin", remote_err))
 
+  local host, host_err = git.remote_host()
+
+  if host then
+    if not auth.is_gitlab_host(host) then
+      table.insert(lines, fail("GitLab host", "Remote host does not look like a GitLab host: " .. host))
+    else
+      table.insert(lines, ok("GitLab host", host))
+
+      local _, auth_err = glab.auth_status(host, {
+        cwd = root,
+      })
+
+      if auth_err then
+        table.insert(lines, fail("glab auth", auth_err))
+        table.insert(lines, "  Run: glab auth login --hostname " .. host)
+      else
+        table.insert(lines, ok("glab auth", host))
+      end
+    end
+  else
+    table.insert(lines, fail("GitLab host", host_err))
+  end
+
   if root then
     local user, user_err = glab.run_json({ "api", "user" }, {
       cwd = root,

@@ -11,14 +11,14 @@ local artifacts = require("gitlab.ci.artifacts")
 local M = {}
 
 local function gitlab_auth()
-  local ok, err = auth.check()
+  local host, err = auth.login()
 
-  if not ok then
+  if not host then
     notification.error(err)
     return
   end
 
-  notification.info("GitLab token detected")
+  notification.info("glab authenticated for " .. host)
 end
 
 local function command(name, callback, opts)

@@ -49,4 +49,22 @@ function M.remote_url()
   return output, nil
 end
 
+function M.remote_host()
+  local remote, err = M.remote_url()
+
+  if not remote then
+    return nil, err
+  end
+
+  local host = remote:match("^git@([^:]+):")
+      or remote:match("^https?://([^/]+)")
+      or remote:match("^ssh://git@([^/]+)")
+
+  if not host or host == "" then
+    return nil, "Cannot extract GitLab host from remote: " .. remote
+  end
+
+  return host, nil
+end
+
 return M
