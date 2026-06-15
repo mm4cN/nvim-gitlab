@@ -161,36 +161,50 @@ function M.retry(opts)
 
   local job_id = opts and opts.args or ""
 
-  if job_id == "" then
-    vim.ui.input({ prompt = "GitLab job id: " }, function(input)
-      if not input or input == "" then
-        return
-      end
-
-      M.retry({ args = vim.trim(input) })
-    end)
-
+  if job_id ~= "" then
+    actions.retry_job(job_id)
     return
   end
 
-  local output, err = glab.run({
-    "job",
-    "retry",
-    tostring(job_id),
-  }, {
+  local branch = current_branch()
+  if not branch then
+    return
+  end
+
+  local pipeline, pipeline_err = api.latest_pipeline({
+    cwd = root,
+    ref = branch,
+  })
+
+  if not pipeline then
+    notification.error(pipeline_err)
+    return
+  end
+
+  local jobs, jobs_err = api.pipeline_jobs(pipeline.id, {
     cwd = root,
   })
 
-  if err then
-    notification.error(err)
+  if not jobs then
+    notification.error(jobs_err)
     return
   end
 
-  buffer.show({
-    title = "GitLab Job Retry",
-    filetype = "text",
-    lines = vim.split(output, "\n", { plain = true }),
-  })
+  if #jobs == 0 then
+    notification.error("No jobs found for pipeline: " .. tostring(pipeline.id))
+    return
+  end
+
+  picker.select(jobs, {
+    prompt = "GitLab job retry",
+    format_item = format.job,
+  }, function(job)
+    if not job then
+      return
+    end
+
+    actions.retry_job(job.id)
+  end)
 end
 
 function M.list()
