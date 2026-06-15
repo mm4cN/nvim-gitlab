@@ -83,4 +83,18 @@ function M.job(job_id, opts)
   })
 end
 
+function M.pipelines(opts)
+  opts = opts or {}
+
+  local query = "per_page=" .. tostring(opts.per_page or 20)
+
+  if opts.ref and opts.ref ~= "" then
+    query = query .. "&ref=" .. vim.uri_encode(opts.ref)
+  end
+
+  return M.get("projects/:id/pipelines?" .. query, {
+    cwd = opts.cwd,
+  })
+end
+
 return M

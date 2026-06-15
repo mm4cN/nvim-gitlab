@@ -4,6 +4,12 @@ Interactive GitLab CI/CD workflows for Neovim powered by `glab`.
 
 Browse pipelines, inspect jobs, view logs, download artifacts, and trigger CI actions directly from Neovim.
 
+## Requirements
+
+- Neovim 0.12+
+- git
+- glab
+
 ## Features
 
 ### CI Pipelines

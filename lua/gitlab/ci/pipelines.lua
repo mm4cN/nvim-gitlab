@@ -1,6 +1,8 @@
 local actions = require("gitlab.ci.actions")
+local api = require("gitlab.api")
 local buffer = require("gitlab.ui.buffer")
 local details = require("gitlab.ci.details")
+local format = require("gitlab.ci.format")
 local git = require("gitlab.git")
 local glab = require("gitlab.glab")
 local navigation = require("gitlab.ui.navigation")
@@ -66,16 +68,12 @@ function M.list()
     return
   end
 
-  local output, err = glab.run({
-    "pipeline",
-    "list",
-    "--per-page",
-    "20",
-  }, {
+  local pipelines, err = api.pipelines({
     cwd = root,
+    per_page = 20,
   })
 
-  if err then
+  if not pipelines then
     notification.error(err)
     return
   end
@@ -86,10 +84,23 @@ function M.list()
     { key = "q",    label = "Quit" },
   }
 
+  local lines = {
+    "GitLab Pipelines",
+    "",
+  }
+
+  if #pipelines == 0 then
+    table.insert(lines, "No pipelines found")
+  else
+    for _, pipeline in ipairs(pipelines) do
+      table.insert(lines, format.pipeline(pipeline))
+    end
+  end
+
   buffer.show({
     title = "GitLab Pipelines",
     filetype = "gitlab",
-    lines = vim.split(output, "\n", { plain = true }),
+    lines = lines,
     hints = hints,
 
     keymaps = {
@@ -131,26 +142,32 @@ function M.status()
     return
   end
 
-  local output, err = glab.run({
-    "pipeline",
-    "list",
-    "--ref",
-    branch,
-    "--per-page",
-    "1",
-  }, {
+  local pipelines, err = api.pipelines({
     cwd = root,
+    ref = branch,
+    per_page = 1,
   })
 
-  if err then
+  if not pipelines then
     notification.error(err)
     return
   end
 
+  local lines = {
+    "GitLab Pipeline Status",
+    "",
+  }
+
+  if #pipelines == 0 then
+    table.insert(lines, "No pipeline found for branch: " .. branch)
+  else
+    table.insert(lines, format.pipeline(pipelines[1]))
+  end
+
   buffer.show({
     title = "GitLab Pipeline Status",
-    filetype = "text",
-    lines = vim.split(output, "\n", { plain = true }),
+    filetype = "gitlab",
+    lines = lines,
   })
 end
 
