@@ -5,6 +5,7 @@ local M = {}
 
 local backends = {
   vim_ui = "gitlab.ui.pickers.vim_ui",
+  telescope = "gitlab.ui.pickers.telescope",
 }
 
 local function backend_name()
