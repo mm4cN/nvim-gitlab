@@ -1,45 +1,21 @@
 ==============================================================================
-gitlab.nvim                                            *gitlab.nvim*
-
-Neovim integration for GitLab CI/CD workflows powered by glab.
-
-==============================================================================
-CONTENTS                                                *gitlab-contents*
-
-1. Requirements ......................... |gitlab-requirements|
-2. Configuration ........................ |gitlab-configuration|
-3. Commands ............................. |gitlab-commands|
-4. Pipelines ............................ |gitlab-pipelines|
-5. Jobs ................................. |gitlab-jobs|
-6. Interactive Views .................... |gitlab-views|
-7. Health Checks ........................ |gitlab-health|
-
-==============================================================================
 REQUIREMENTS                                        *gitlab-requirements*
 
-- Neovim 0.10+
+- Neovim 0.12+
 - git
 - glab
 - GitLab Personal Access Token
 
-==============================================================================
-CONFIGURATION                                    *gitlab-configuration*
+Authentication is performed through the glab CLI.
 
->
-    require("gitlab").setup({
-        glab_binary = "glab",
-        gitlab_token_env = "GITLAB_TOKEN",
+The plugin can authenticate glab for the GitLab instance associated
+with the current repository remote.
 
-        default_branch = "main",
-        ci_file = ".gitlab-ci.yml",
+Supported remotes:
 
-        picker = "vim_ui",
-        scratch_height = 15,
-
-        artifacts_dir = "gitlab-artifacts",
-        extract_artifacts = true,
-    })
-<
+    git@gitlab.com:group/project.git
+    https://gitlab.com/group/project.git
+    https://gitlab.example.com/group/project.git
 
 ==============================================================================
 COMMANDS                                              *gitlab-commands*
@@ -47,23 +23,35 @@ COMMANDS                                              *gitlab-commands*
 Health:
 
     :GitlabAuth
+        Authenticate glab for the current repository host.
+
     :GitlabHealth
+        Display plugin health information.
 
 CI:
 
     :GitlabCiValidate
+        Validate the configured CI file.
 
 Pipelines:
 
     :GitlabPipelineRun
+        Run a new pipeline for the current branch.
+
     :GitlabPipelineList
+        List recent project pipelines.
+
     :GitlabPipelineStatus
+        Show the latest pipeline for the current branch.
+
     :GitlabPipelineDetails
     :GitlabPipelineDetails {pipeline_id}
 
 Jobs:
 
     :GitlabJobList
+        List jobs from the latest pipeline.
+
     :GitlabJobLogs
     :GitlabJobLogs {job_id}
 
@@ -77,23 +65,42 @@ Jobs:
 ==============================================================================
 PIPELINES                                            *gitlab-pipelines*
 
-GitLab pipeline views provide interactive navigation.
+Pipeline views provide interactive navigation and actions.
 
-Available actions:
+Pipeline List:
 
     <CR>    Open pipeline details
     R       Re-run pipeline
     q       Close view
 
-Pipeline details provide access to jobs belonging to the selected
-pipeline.
+Pipeline Status:
+
+    q       Close view
+
+Pipeline Details:
+
+    <CR>    Open selected job details
+    L       Open selected job logs
+    A       Download selected job artifacts
+    R       Re-run pipeline
+    b       Navigate back
+    q       Close view
+
+Displayed information:
+
+- Pipeline status
+- Branch / ref
+- Commit SHA
+- Creation time
+- Update time
+- Pipeline jobs
 
 ==============================================================================
 JOBS                                                      *gitlab-jobs*
 
 Job views expose pipeline job information and actions.
 
-Available actions:
+Job List:
 
     <CR>    Open job details
     L       Open job logs
@@ -102,7 +109,14 @@ Available actions:
     b       Navigate back
     q       Close view
 
-Job details display:
+Job Details:
+
+    A       Download job artifacts
+    R       Retry job
+    b       Navigate back
+    q       Close view
+
+Displayed information:
 
 - Job status
 - Stage
@@ -110,6 +124,26 @@ Job details display:
 - Duration
 - Pipeline information
 - Commit information
+
+==============================================================================
+ARTIFACTS                                            *gitlab-artifacts*
+
+Artifacts can be downloaded directly from job views.
+
+Downloaded artifacts are stored in:
+
+    {artifacts_dir}/{job_id}
+
+If extraction is enabled:
+
+    extract_artifacts = true
+
+archives are automatically unpacked after download.
+
+Artifact views provide:
+
+    b       Navigate back
+    q       Close view
 
 ==============================================================================
 INTERACTIVE VIEWS                                      *gitlab-views*
@@ -123,9 +157,14 @@ Navigation hierarchy:
         +-- Pipeline Details
                 |
                 +-- Job Details
+                |
                 +-- Job Logs
+                |
+                +-- Artifact Download
 
 The 'b' key returns to the previous view.
+
+Most interactive views display action hints at the top of the buffer.
 
 ==============================================================================
 HEALTH CHECKS                                         *gitlab-health*
@@ -138,10 +177,16 @@ Plugin health command:
 
     :GitlabHealth
 
-Authentication check:
+Authentication command:
 
     :GitlabAuth
 
-==============================================================================
+Health checks include:
 
-vim:tw=78:ts=8:noet:ft=help:norl:
+- git availability
+- glab availability
+- repository root detection
+- remote URL detection
+- GitLab host detection
+- glab authentication status
+- GitLab API access validation
