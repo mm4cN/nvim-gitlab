@@ -1,6 +1,12 @@
 # nvim-gitlab
 
-Interactive GitLab CI/CD workflows for Neovim powered by `glab` and GitLab APIs.
+<p align="center">
+  <img src="assets/icon.png" width="256" alt="Forge">
+</p>
+
+<p align="center">
+    Interactive GitLab CI/CD workflows for Neovim powered by `glab` and GitLab APIs.
+</p>
 
 Browse pipelines, inspect jobs, view logs, download artifacts, and trigger CI actions directly from Neovim.
 
