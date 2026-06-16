@@ -176,6 +176,7 @@ If Telescope is not installed, gitlab.nvim automatically falls back to vim.ui.se
 :GitlabJobRetry
 :GitlabJobRetry <job_id>
 
+:GitlabJobDetails
 :GitlabJobDetails <job_id>
 
 :GitlabJobArtifacts <job_id>
@@ -199,11 +200,6 @@ Pipeline and job views support:
 
 - View refresh
 - Artifact browser
-- Better pipeline formatting
+- Pipeline filtering
+- Pipeline search
 
-### Merge Requests
-
-- MR list
-- MR details
-- MR checkout
-- MR pipelines
