@@ -1,7 +1,7 @@
 # nvim-gitlab
 
 <p align="center">
-  <img src="assets/icon.png" width="256" alt="Forge">
+  <img src="assets/icon.png" width="256" alt="nvim-gitlab">
 </p>
 
 <p align="center">
