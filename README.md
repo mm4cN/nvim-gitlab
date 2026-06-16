@@ -27,7 +27,88 @@ Merge Requests, Issues, and project management features are currently out of sco
 - git
 - glab
 
+## Installation
+
+### lazy.nvim
+
+```lua
+{
+    "mm4cN/nvim-gitlab",
+    config = function()
+        require("gitlab").setup()
+    end,
+}
+```
+
+### packer.nvim
+
+```lua
+use({
+    "mm4cN/nvim-gitlab",
+    config = function()
+        require("gitlab").setup()
+    end,
+})
+```
+
+### mini.deps
+
+```lua
+MiniDeps.add({
+    source = "mm4cN/nvim-gitlab",
+})
+
+require("gitlab").setup()
+```
+
+### vim.pack (Neovim 0.12+)
+
+```lua
+vim.pack.add({
+    { src = "https://github.com/mm4cN/nvim-gitlab" },
+})
+
+require("gitlab").setup()
+```
+
+## Setup
+
+```lua
+require("gitlab").setup({
+    glab_binary = "glab",
+    default_branch = "main",
+    ci_file = ".gitlab-ci.yml",
+
+    picker = "vim_ui",      -- default picker backend
+
+    scratch_height = 15,    -- scratch buffer height
+
+    gitlab_token_env = "GITLAB_TOKEN",
+
+    artifacts_dir = "gitlab-artifacts",
+    extract_artifacts = true,
+})
+```
+
+### Telescope Support
+
+To enable Telescope integration:
+
+```lua
+require("gitlab").setup({
+    picker = "telescope",
+})
+```
+
+If Telescope is not installed, gitlab.nvim automatically falls back to vim.ui.select().
+
 ## Features
+
+### Pickers
+
+- Picker backend abstraction
+- Telescope picker backend
+- vim.ui fallback picker backend
 
 ### CI Pipelines
 
@@ -58,24 +139,6 @@ Merge Requests, Issues, and project management features are currently out of sco
 - glab availability checks
 - CI configuration validation
 
-## Setup
-
-```lua
-require("gitlab").setup({
-    glab_binary = "glab",
-    default_branch = "main",
-    ci_file = ".gitlab-ci.yml",
-
-    picker = "vim_ui",
-
-    scratch_height = 15,
-
-    gitlab_token_env = "GITLAB_TOKEN",
-
-    artifacts_dir = "gitlab-artifacts",
-    extract_artifacts = true,
-})
-```
 ## Commands
 
 ### Health
