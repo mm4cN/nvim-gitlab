@@ -134,6 +134,7 @@ With Telescope enabled, pickers provide additional features:
 - Open job details
 - View job logs
 - Retry jobs
+- Play manual jobs
 - Download job artifacts
 
 ### Interactive Navigation
@@ -201,6 +202,7 @@ Refreshable pipeline and job views support:
 - `L` Open logs
 - `A` Download artifacts
 - `R` Retry job / Re-run pipeline
+- `P` Play manual job
 - `b` Navigate back
 - `q` Close view
 

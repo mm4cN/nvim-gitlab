@@ -41,6 +41,30 @@ function M.retry_job(job_id)
   notification.info("Job retry requested: #" .. tostring(job_id))
 end
 
+function M.play_job(job_id)
+  if not job_id or job_id == "" then
+    notification.error("job_id is required")
+    return
+  end
+
+  local root = repo_root()
+  if not root then
+    return
+  end
+
+  local _, err = api.request("projects/:id/jobs/" .. tostring(job_id) .. "/play", {
+    cwd = root,
+    method = "POST",
+  })
+
+  if err then
+    notification.error(err)
+    return
+  end
+
+  notification.info("Job play requested: #" .. tostring(job_id))
+end
+
 function M.retry_pipeline_jobs(pipeline_id)
   if not pipeline_id or pipeline_id == "" then
     notification.error("pipeline_id is required")

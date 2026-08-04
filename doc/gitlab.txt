@@ -143,6 +143,7 @@ Job List:
     L       Open job logs
     A       Download job artifacts
     R       Retry job
+    P       Play manual job
     b       Navigate back
     q       Close view
 
@@ -151,6 +152,7 @@ Job Details:
     r       Refresh job details
     A       Download job artifacts
     R       Retry job
+    P       Play manual job (if manual)
     b       Navigate back
     q       Close view
 
@@ -162,6 +164,17 @@ Displayed information:
 - Duration
 - Pipeline information
 - Commit information
+
+Manual Jobs:
+
+Manual jobs require explicit triggering.
+
+In job list and job details views, press P to play a manual job.
+
+In the job list, press P to attempt to play the selected job. The plugin
+verifies that the job has manual status before sending the request.
+
+In job details, the P action is shown only for manual jobs.
 
 ==============================================================================
 ARTIFACTS                                            *gitlab-artifacts*

@@ -137,25 +137,44 @@ function M.show(opts)
       buffer.replace(build_view(refreshed_job))
     end
 
+    local hints = {}
+    if job_data.status == "manual" then
+      table.insert(hints, { key = "P", label = "Play" })
+    end
+    table.insert(hints, { key = "r", label = "Refresh" })
+    table.insert(hints, { key = "A", label = "Artifacts" })
+    table.insert(hints, { key = "R", label = "Retry" })
+    table.insert(hints, { key = "b", label = "Back" })
+    table.insert(hints, { key = "q", label = "Quit" })
+
+    local keymaps = {
+      q = buffer.close_current,
+      b = buffer.back,
+      r = buffer.refresh,
+
+      A = function()
+        artifacts.download({
+          job_id = job_data.id,
+        })
+      end,
+
+      R = function()
+        actions.retry_job(job_data.id)
+      end,
+    }
+
+    if job_data.status == "manual" then
+      keymaps.P = function()
+        actions.play_job(job_data.id)
+      end
+    end
+
     return {
       title = "GitLab Job #" .. tostring(job_data.id),
       filetype = "gitlab",
       lines = lines,
-      keymaps = {
-        q = buffer.close_current,
-        b = buffer.back,
-        r = buffer.refresh,
-
-        A = function()
-          artifacts.download({
-            job_id = job_data.id,
-          })
-        end,
-
-        R = function()
-          actions.retry_job(job_data.id)
-        end,
-      },
+      hints = hints,
+      keymaps = keymaps,
       refresh = refresh_view,
     }
   end

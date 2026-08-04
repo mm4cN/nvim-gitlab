@@ -253,6 +253,7 @@ function M.list()
       { key = "L",    label = "Logs" },
       { key = "A",    label = "Artifacts" },
       { key = "R",    label = "Retry" },
+      { key = "P",    label = "Play" },
       { key = "b",    label = "Back" },
       { key = "q",    label = "Quit" },
     }
@@ -330,6 +331,30 @@ function M.list()
           end
 
           actions.retry_job(job_id)
+        end,
+
+        P = function()
+          local job_id = navigation.job_id_under_cursor()
+          if not job_id then
+            notification.error("No job id under cursor")
+            return
+          end
+
+          local job, err = api.job(job_id, {
+            cwd = root,
+          })
+
+          if not job then
+            notification.error(err)
+            return
+          end
+
+          if job.status ~= "manual" then
+            notification.warn("Job is not manual: " .. tostring(job.status))
+            return
+          end
+
+          actions.play_job(job_id)
         end,
       },
       refresh = refresh_view,
