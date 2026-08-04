@@ -94,6 +94,72 @@ function M.show(opts)
     return
   end
 
+  local function build_view(job_data)
+    local commit = job_data.commit or {}
+    local pipeline = job_data.pipeline or {}
+
+    local lines = {
+      "Job #" .. tostring(job_data.id),
+      "",
+      "Name:      " .. format.value(job_data.name),
+      "Status:    " .. format.status_icon(job_data.status) .. " " .. format.value(job_data.status),
+      "Stage:     " .. format.value(job_data.stage),
+      "Ref:       " .. format.value(job_data.ref),
+      "Duration:  " .. format.duration(job_data.duration),
+      "Started:   " .. format.value(job_data.started_at),
+      "Finished:  " .. format.value(job_data.finished_at),
+      "",
+      "Pipeline:",
+      "  ID:      " .. format.value(pipeline.id),
+      "  Status:  " .. format.status_icon(pipeline.status) .. " " .. format.value(pipeline.status),
+      "  Ref:     " .. format.value(pipeline.ref),
+      "",
+      "Commit:",
+      "  SHA:     " .. format.short_sha(commit.id or commit.sha),
+      "  Title:   " .. format.value(commit.title),
+      "  Author:  " .. format.value(commit.author_name),
+      "",
+      "Actions:",
+      "  :GitlabJobLogs " .. tostring(job_data.id),
+      "  :GitlabJobRetry " .. tostring(job_data.id),
+    }
+
+    local function refresh_view()
+      local refreshed_job, err = api.job(job_id, {
+        cwd = root,
+      })
+
+      if not refreshed_job then
+        notification.error(err)
+        return
+      end
+
+      buffer.replace(build_view(refreshed_job))
+    end
+
+    return {
+      title = "GitLab Job #" .. tostring(job_data.id),
+      filetype = "gitlab",
+      lines = lines,
+      keymaps = {
+        q = buffer.close_current,
+        b = buffer.back,
+        r = buffer.refresh,
+
+        A = function()
+          artifacts.download({
+            job_id = job_data.id,
+          })
+        end,
+
+        R = function()
+          actions.retry_job(job_data.id)
+        end,
+      },
+      refresh = refresh_view,
+    }
+  end
+
   local job, err = api.job(job_id, {
     cwd = root,
   })
@@ -103,54 +169,7 @@ function M.show(opts)
     return
   end
 
-  local commit = job.commit or {}
-  local pipeline = job.pipeline or {}
-
-  local lines = {
-    "Job #" .. tostring(job.id),
-    "",
-    "Name:      " .. format.value(job.name),
-    "Status:    " .. format.status_icon(job.status) .. " " .. format.value(job.status),
-    "Stage:     " .. format.value(job.stage),
-    "Ref:       " .. format.value(job.ref),
-    "Duration:  " .. format.duration(job.duration),
-    "Started:   " .. format.value(job.started_at),
-    "Finished:  " .. format.value(job.finished_at),
-    "",
-    "Pipeline:",
-    "  ID:      " .. format.value(pipeline.id),
-    "  Status:  " .. format.status_icon(pipeline.status) .. " " .. format.value(pipeline.status),
-    "  Ref:     " .. format.value(pipeline.ref),
-    "",
-    "Commit:",
-    "  SHA:     " .. format.short_sha(commit.id or commit.sha),
-    "  Title:   " .. format.value(commit.title),
-    "  Author:  " .. format.value(commit.author_name),
-    "",
-    "Actions:",
-    "  :GitlabJobLogs " .. tostring(job.id),
-    "  :GitlabJobRetry " .. tostring(job.id),
-  }
-
-  buffer.push({
-    title = "GitLab Job #" .. tostring(job.id),
-    filetype = "gitlab",
-    lines = lines,
-    keymaps = {
-      q = buffer.close_current,
-      b = buffer.back,
-
-      A = function()
-        artifacts.download({
-          job_id = job.id,
-        })
-      end,
-
-      R = function()
-        actions.retry_job(job.id)
-      end,
-    },
-  })
+  buffer.push(build_view(job))
 end
 
 return M

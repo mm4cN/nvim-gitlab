@@ -24,6 +24,118 @@ local function repo_root()
 end
 
 local function show_pipeline(root, pipeline)
+  local function build_view(pipeline_data, jobs_data)
+    local lines = {
+      "Pipeline #" .. tostring(pipeline_data.id),
+      "",
+      "Status: " .. format.status_icon(pipeline_data.status) .. " " .. tostring(pipeline_data.status),
+      "Ref:     " .. tostring(pipeline_data.ref),
+      "SHA:     " .. format.short_sha(pipeline_data.sha),
+      "Created: " .. tostring(pipeline_data.created_at),
+      "Updated: " .. tostring(pipeline_data.updated_at),
+      "",
+      "Jobs:",
+      "",
+    }
+
+    if #jobs_data == 0 then
+      table.insert(lines, "  No jobs found")
+    else
+      for _, job in ipairs(jobs_data) do
+        table.insert(lines, format.job(job))
+      end
+    end
+
+    local hints = {
+      { key = "r",    label = "Refresh" },
+      { key = "<CR>", label = "Details" },
+      { key = "L",    label = "Logs" },
+      { key = "A",    label = "Artifacts" },
+      { key = "R",    label = "Re-run" },
+      { key = "b",    label = "Back" },
+      { key = "q",    label = "Quit" },
+    }
+
+    local function refresh_view()
+      local refreshed_pipeline, pipeline_err = api.pipeline(pipeline.id, {
+        cwd = root,
+      })
+
+      if not refreshed_pipeline then
+        notification.error(pipeline_err)
+        return
+      end
+
+      local refreshed_jobs, jobs_err = api.pipeline_jobs(pipeline.id, {
+        cwd = root,
+      })
+
+      if not refreshed_jobs then
+        notification.error(jobs_err)
+        return
+      end
+
+      buffer.replace(build_view(refreshed_pipeline, refreshed_jobs))
+    end
+
+    return {
+      title = "GitLab Pipeline #" .. tostring(pipeline_data.id),
+      filetype = "gitlab",
+      lines = lines,
+      hints = hints,
+
+      keymaps = {
+        q = buffer.close_current,
+        b = buffer.back,
+        r = buffer.refresh,
+
+        ["<CR>"] = function()
+          local job_id = navigation.job_id_under_cursor()
+
+          if not job_id then
+            notification.error("No job id under cursor")
+            return
+          end
+
+          job_details.show({
+            job_id = job_id,
+          })
+        end,
+
+        L = function()
+          local job_id = navigation.job_id_under_cursor()
+
+          if not job_id then
+            notification.error("No job id under cursor")
+            return
+          end
+
+          jobs_module.logs({
+            args = job_id,
+          })
+        end,
+
+        A = function()
+          local job_id = navigation.job_id_under_cursor()
+          if not job_id then
+            notification.error("No job id under cursor")
+            return
+          end
+
+          artifacts.download({
+            job_id = job_id,
+          })
+        end,
+
+        R = function()
+          actions.rerun_pipeline(pipeline.id)
+        end,
+      },
+
+      refresh = refresh_view,
+    }
+  end
+
   local pipeline_jobs, jobs_err = api.pipeline_jobs(pipeline.id, {
     cwd = root,
   })
@@ -33,89 +145,7 @@ local function show_pipeline(root, pipeline)
     return
   end
 
-  local lines = {
-    "Pipeline #" .. tostring(pipeline.id),
-    "",
-    "Status: " .. format.status_icon(pipeline.status) .. " " .. tostring(pipeline.status),
-    "Ref:     " .. tostring(pipeline.ref),
-    "SHA:     " .. format.short_sha(pipeline.sha),
-    "Created: " .. tostring(pipeline.created_at),
-    "Updated: " .. tostring(pipeline.updated_at),
-    "",
-    "Jobs:",
-    "",
-  }
-
-  if #pipeline_jobs == 0 then
-    table.insert(lines, "  No jobs found")
-  else
-    for _, job in ipairs(pipeline_jobs) do
-      table.insert(lines, format.job(job))
-    end
-  end
-
-  local hints = {
-    { key = "<CR>", label = "Details" },
-    { key = "L",    label = "Logs" },
-    { key = "A",    label = "Artifacts" },
-    { key = "R",    label = "Re-run" },
-    { key = "b",    label = "Back" },
-    { key = "q",    label = "Quit" },
-  }
-
-  buffer.show({
-    title = "GitLab Pipeline #" .. tostring(pipeline.id),
-    filetype = "gitlab",
-    lines = lines,
-    hints = hints,
-
-    keymaps = {
-      q = buffer.close_current,
-      b = buffer.back,
-
-      ["<CR>"] = function()
-        local job_id = navigation.job_id_under_cursor()
-
-        if not job_id then
-          notification.error("No job id under cursor")
-          return
-        end
-
-        job_details.show({
-          job_id = job_id,
-        })
-      end,
-
-      L = function()
-        local job_id = navigation.job_id_under_cursor()
-
-        if not job_id then
-          notification.error("No job id under cursor")
-          return
-        end
-
-        jobs_module.logs({
-          args = job_id,
-        })
-      end,
-
-      A = function()
-        local job_id = navigation.job_id_under_cursor()
-        if not job_id then
-          notification.error("No job id under cursor")
-          return
-        end
-
-        artifacts.download({
-          job_id = job_id,
-        })
-      end,
-
-      R = function()
-        actions.rerun_pipeline(pipeline.id)
-      end,
-    },
-  })
+  buffer.show(build_view(pipeline, pipeline_jobs))
 end
 
 local function pick_pipeline(root, callback)

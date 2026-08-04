@@ -69,6 +69,78 @@ function M.list()
     return
   end
 
+  local function build_view(pipelines)
+    local lines = {
+      "GitLab Pipelines",
+      "",
+    }
+
+    if #pipelines == 0 then
+      table.insert(lines, "No pipelines found")
+    else
+      for _, pipeline in ipairs(pipelines) do
+        table.insert(lines, format.pipeline(pipeline))
+      end
+    end
+
+    local hints = {
+      { key = "r",    label = "Refresh" },
+      { key = "<CR>", label = "Details" },
+      { key = "R",    label = "Re-run" },
+      { key = "q",    label = "Quit" },
+    }
+
+    local function refresh_view()
+      local refreshed_pipelines, err = api.pipelines({
+        cwd = root,
+        per_page = 20,
+      })
+
+      if not refreshed_pipelines then
+        notification.error(err)
+        return
+      end
+
+      buffer.replace(build_view(refreshed_pipelines))
+    end
+
+    return {
+      title = "GitLab Pipelines",
+      filetype = "gitlab",
+      lines = lines,
+      hints = hints,
+
+      keymaps = {
+        q = buffer.close_current,
+        r = buffer.refresh,
+
+        ["<CR>"] = function()
+          local pipeline_id = navigation.pipeline_id_under_cursor()
+
+          if not pipeline_id then
+            notification.error("No pipeline id under cursor")
+            return
+          end
+
+          details.show({
+            pipeline_id = pipeline_id,
+          })
+        end,
+
+        R = function()
+          local pipeline_id = navigation.pipeline_id_under_cursor()
+          if not pipeline_id then
+            notification.error("No pipeline id under cursor")
+            return
+          end
+          actions.rerun_pipeline(pipeline_id)
+        end,
+      },
+
+      refresh = refresh_view,
+    }
+  end
+
   local pipelines, err = api.pipelines({
     cwd = root,
     per_page = 20,
@@ -79,57 +151,7 @@ function M.list()
     return
   end
 
-  local hints = {
-    { key = "<CR>", label = "Details" },
-    { key = "R",    label = "Re-run" },
-    { key = "q",    label = "Quit" },
-  }
-
-  local lines = {
-    "GitLab Pipelines",
-    "",
-  }
-
-  if #pipelines == 0 then
-    table.insert(lines, "No pipelines found")
-  else
-    for _, pipeline in ipairs(pipelines) do
-      table.insert(lines, format.pipeline(pipeline))
-    end
-  end
-
-  buffer.show({
-    title = "GitLab Pipelines",
-    filetype = "gitlab",
-    lines = lines,
-    hints = hints,
-
-    keymaps = {
-      q = buffer.close_current,
-
-      ["<CR>"] = function()
-        local pipeline_id = navigation.pipeline_id_under_cursor()
-
-        if not pipeline_id then
-          notification.error("No pipeline id under cursor")
-          return
-        end
-
-        details.show({
-          pipeline_id = pipeline_id,
-        })
-      end,
-
-      R = function()
-        local pipeline_id = navigation.pipeline_id_under_cursor()
-        if not pipeline_id then
-          notification.error("No pipeline id under cursor")
-          return
-        end
-        actions.rerun_pipeline(pipeline_id)
-      end,
-    },
-  })
+  buffer.show(build_view(pipelines))
 end
 
 function M.status()

@@ -1,4 +1,5 @@
 local config = require("gitlab.config")
+local notification = require("gitlab.ui.notification")
 local state = require("gitlab.ui.state")
 
 local M = {}
@@ -154,6 +155,27 @@ function M.close_current()
   end
 
   state.reset()
+end
+
+function M.refresh()
+  if not state.is_valid() then
+    return
+  end
+
+  if not state.current or not state.current.refresh then
+    notification.info("Current view does not support refresh")
+    return
+  end
+
+  local cursor_line = vim.api.nvim_win_get_cursor(state.win)[1]
+
+  state.current.refresh()
+
+  if state.is_valid() then
+    local line_count = vim.api.nvim_buf_line_count(state.buf)
+    local target_line = math.min(cursor_line, line_count)
+    pcall(vim.api.nvim_win_set_cursor, state.win, { target_line, 0 })
+  end
 end
 
 return M

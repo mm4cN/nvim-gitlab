@@ -232,6 +232,110 @@ function M.list()
     return
   end
 
+  local pipeline_id = pipeline.id
+
+  local function build_view(pipeline_data, jobs_data)
+    local lines = {
+      "Jobs for Pipeline #" .. tostring(pipeline_data.id),
+      "",
+      "Ref:    " .. tostring(pipeline_data.ref),
+      "Status: " .. tostring(pipeline_data.status),
+      "",
+    }
+
+    for _, job in ipairs(jobs_data) do
+      table.insert(lines, format.job(job))
+    end
+
+    local hints = {
+      { key = "r",    label = "Refresh" },
+      { key = "<CR>", label = "Details" },
+      { key = "L",    label = "Logs" },
+      { key = "A",    label = "Artifacts" },
+      { key = "R",    label = "Retry" },
+      { key = "b",    label = "Back" },
+      { key = "q",    label = "Quit" },
+    }
+
+    local function refresh_view()
+      local refreshed_pipeline, refresh_pipeline_err = api.pipeline(pipeline_id, {
+        cwd = root,
+      })
+
+      if not refreshed_pipeline then
+        notification.error(refresh_pipeline_err)
+        return
+      end
+
+      local refreshed_jobs, jobs_err = api.pipeline_jobs(pipeline_id, {
+        cwd = root,
+      })
+
+      if not refreshed_jobs then
+        notification.error(jobs_err)
+        return
+      end
+
+      buffer.replace(build_view(refreshed_pipeline, refreshed_jobs))
+    end
+
+    return {
+      title = "GitLab Jobs",
+      filetype = "gitlab",
+      lines = lines,
+      hints = hints,
+      keymaps = {
+        q = buffer.close_current,
+        b = buffer.back,
+        r = buffer.refresh,
+
+        ["<CR>"] = function()
+          local job_id = navigation.job_id_under_cursor()
+          if not job_id then
+            notification.error("No job id under cursor")
+            return
+          end
+          require("gitlab.ci.job_details").show({
+            job_id = job_id,
+          })
+        end,
+
+        L = function()
+          local job_id = navigation.job_id_under_cursor()
+          if not job_id then
+            notification.error("No job id under cursor")
+            return
+          end
+          show_logs(root, job_id)
+        end,
+
+        A = function()
+          local job_id = navigation.job_id_under_cursor()
+          if not job_id then
+            notification.error("No job id under cursor")
+            return
+          end
+          artifacts.download({
+            job_id = job_id,
+          })
+        end,
+
+        R = function()
+          local job_id = navigation.job_id_under_cursor()
+
+          if not job_id then
+            notification.error("No job id under cursor")
+
+            return
+          end
+
+          actions.retry_job(job_id)
+        end,
+      },
+      refresh = refresh_view,
+    }
+  end
+
   local jobs, jobs_err = api.pipeline_jobs(pipeline.id, {
     cwd = root,
   })
@@ -241,80 +345,7 @@ function M.list()
     return
   end
 
-  local lines = {
-    "Jobs for Pipeline #" .. tostring(pipeline.id),
-    "",
-    "Ref:    " .. tostring(pipeline.ref),
-    "Status: " .. tostring(pipeline.status),
-    "",
-  }
-
-  for _, job in ipairs(jobs) do
-    table.insert(lines, format.job(job))
-  end
-
-  local hints = {
-    { key = "<CR>", label = "Details" },
-    { key = "L",    label = "Logs" },
-    { key = "A",    label = "Artifacts" },
-    { key = "R",    label = "Retry" },
-    { key = "b",    label = "Back" },
-    { key = "q",    label = "Quit" },
-  }
-
-  buffer.show({
-    title = "GitLab Jobs",
-    filetype = "gitlab",
-    lines = lines,
-    hints = hints,
-    keymaps = {
-      q = buffer.close_current,
-      b = buffer.back,
-
-      ["<CR>"] = function()
-        local job_id = navigation.job_id_under_cursor()
-        if not job_id then
-          notification.error("No job id under cursor")
-          return
-        end
-        require("gitlab.ci.job_details").show({
-          job_id = job_id,
-        })
-      end,
-
-      L = function()
-        local job_id = navigation.job_id_under_cursor()
-        if not job_id then
-          notification.error("No job id under cursor")
-          return
-        end
-        show_logs(root, job_id)
-      end,
-
-      A = function()
-        local job_id = navigation.job_id_under_cursor()
-        if not job_id then
-          notification.error("No job id under cursor")
-          return
-        end
-        artifacts.download({
-          job_id = job_id,
-        })
-      end,
-
-      R = function()
-        local job_id = navigation.job_id_under_cursor()
-
-        if not job_id then
-          notification.error("No job id under cursor")
-
-          return
-        end
-
-        actions.retry_job(job_id)
-      end,
-    },
-  })
+  buffer.show(build_view(pipeline, jobs))
 end
 
 return M

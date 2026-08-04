@@ -194,8 +194,9 @@ With Telescope enabled, pickers provide additional features:
 
 ### Interactive Views
 
-Pipeline and job views support:
+Refreshable pipeline and job views support:
 
+- `r` Refresh current view
 - `<CR>` Open details
 - `L` Open logs
 - `A` Download artifacts

@@ -103,6 +103,7 @@ Pipeline views provide interactive navigation and actions.
 
 Pipeline List:
 
+    r       Refresh pipeline list
     <CR>    Open pipeline details
     R       Re-run pipeline
     q       Close view
@@ -113,6 +114,7 @@ Pipeline Status:
 
 Pipeline Details:
 
+    r       Refresh pipeline details
     <CR>    Open selected job details
     L       Open selected job logs
     A       Download selected job artifacts
@@ -136,6 +138,7 @@ Job views expose pipeline job information and actions.
 
 Job List:
 
+    r       Refresh job list
     <CR>    Open job details
     L       Open job logs
     A       Download job artifacts
@@ -145,6 +148,7 @@ Job List:
 
 Job Details:
 
+    r       Refresh job details
     A       Download job artifacts
     R       Retry job
     b       Navigate back
