@@ -78,4 +78,20 @@ function M.pipeline(pipeline)
   )
 end
 
+function M.job_preview(job)
+  local runner = job.runner or {}
+
+  return {
+    "Job",
+    string.rep("─", 12),
+    "ID       " .. M.value(job.id),
+    "Name     " .. M.value(job.name),
+    "Stage    " .. M.value(job.stage),
+    "Status   " .. M.value(job.status),
+    "Ref      " .. M.value(job.ref),
+    "Duration " .. M.duration(job.duration),
+    "Runner   " .. M.value(runner.description),
+  }
+end
+
 return M

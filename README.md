@@ -108,6 +108,10 @@ require("gitlab").setup({
 
 If Telescope is not installed, gitlab.nvim automatically falls back to vim.ui.select().
 
+With Telescope enabled, pickers provide additional features:
+- Preview pane showing available actions and selected item details
+- Custom keybindings for quick actions (e.g., `<C-r>` to re-run a pipeline directly from the picker)
+
 ## Features
 
 ### Pickers

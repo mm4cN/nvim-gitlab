@@ -2,6 +2,7 @@ gitlab-artifacts	gitlab.txt	/*gitlab-artifacts*
 gitlab-commands	gitlab.txt	/*gitlab-commands*
 gitlab-health	gitlab.txt	/*gitlab-health*
 gitlab-jobs	gitlab.txt	/*gitlab-jobs*
+gitlab-pickers	gitlab.txt	/*gitlab-pickers*
 gitlab-pipelines	gitlab.txt	/*gitlab-pipelines*
 gitlab-requirements	gitlab.txt	/*gitlab-requirements*
 gitlab-views	gitlab.txt	/*gitlab-views*

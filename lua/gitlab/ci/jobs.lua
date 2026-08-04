@@ -143,7 +143,9 @@ function M.logs(opts)
 
   picker.select(jobs, {
     prompt = "GitLab job logs",
+    select_label = "Open logs",
     format_item = format.job,
+    preview = format.job_preview,
   }, function(job)
     if not job then
       return
@@ -197,7 +199,9 @@ function M.retry(opts)
 
   picker.select(jobs, {
     prompt = "GitLab job retry",
+    select_label = "Retry job",
     format_item = format.job,
+    preview = format.job_preview,
   }, function(job)
     if not job then
       return

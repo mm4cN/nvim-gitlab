@@ -63,6 +63,8 @@ local function pick_job(root, callback)
 
   picker.select(jobs, {
     prompt = "GitLab jobs",
+    select_label = "Select job",
+    preview = format.job_preview,
     format_item = format.job,
   }, function(job)
     if not job then

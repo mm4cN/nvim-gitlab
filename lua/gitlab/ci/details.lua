@@ -136,7 +136,29 @@ local function pick_pipeline(root, callback)
 
   picker.select(pipelines, {
     prompt = "GitLab pipelines",
+    select_label = "Details",
     format_item = format.pipeline,
+    preview = function(pipeline)
+      return {
+        "Pipeline",
+        string.rep("─", 12),
+        "ID       " .. tostring(pipeline.id),
+        "Ref      " .. format.value(pipeline.ref),
+        "Status   " .. format.value(pipeline.status),
+        "SHA      " .. format.short_sha(pipeline.sha),
+        "Created  " .. format.datetime(pipeline.created_at),
+        "Updated  " .. format.datetime(pipeline.updated_at),
+      }
+    end,
+    actions = {
+      {
+        key = "<C-r>",
+        label = "Re-run pipeline",
+        callback = function(pipeline)
+          actions.rerun_pipeline(pipeline.id)
+        end,
+      },
+    },
   }, function(pipeline)
     if not pipeline then
       return

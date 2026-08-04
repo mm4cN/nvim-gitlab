@@ -5,6 +5,7 @@ REQUIREMENTS                                        *gitlab-requirements*
 - git
 - glab
 - GitLab Personal Access Token
+- telescope.nvim (optional, for Telescope picker backend)
 
 Authentication is performed through the glab CLI.
 
@@ -61,6 +62,39 @@ Jobs:
     :GitlabJobDetails {job_id}
 
     :GitlabJobArtifacts {job_id}
+
+==============================================================================
+PICKERS                                                *gitlab-pickers*
+
+The plugin provides a picker abstraction that supports multiple backends.
+
+vim.ui Backend (default):
+
+    Uses Neovim's built-in vim.ui.select() for basic selection.
+
+Telescope Backend:
+
+    Enhanced picker with additional features:
+    - Preview pane showing available actions
+    - Custom keybindings for quick actions
+
+    Enable Telescope backend:
+>
+        require("gitlab").setup({
+            picker = "telescope",
+        })
+<
+Telescope Picker Actions:
+
+    Pipeline Picker:
+        <CR>    View pipeline details
+        <C-r>   Re-run pipeline directly
+
+    Job Picker:
+        <CR>    Select job for action
+
+    The preview pane displays available actions, keybindings, and details
+    for the selected pipeline or job.
 
 ==============================================================================
 PIPELINES                                            *gitlab-pipelines*
