@@ -8,6 +8,7 @@ local notification = require("gitlab.ui.notification")
 local picker = require("gitlab.ui.picker")
 local api = require("gitlab.api")
 local navigation = require("gitlab.ui.navigation")
+local log_buffer = require("gitlab.ci.log_buffer")
 
 local M = {}
 
@@ -85,21 +86,9 @@ local function show_logs(root, job_id)
     return
   end
 
-  local hints = {
-    { key = "b", label = "Back" },
-    { key = "q", label = "Quit" },
-  }
+  local lines = clean_logs(output)
 
-  buffer.push({
-    title = "GitLab Job " .. tostring(job_id),
-    filetype = "log",
-    lines = clean_logs(output),
-    hints = hints,
-    keymaps = {
-      q = buffer.close_current,
-      b = buffer.back,
-    },
-  })
+  log_buffer.open(job_id, lines)
 end
 
 function M.logs(opts)
