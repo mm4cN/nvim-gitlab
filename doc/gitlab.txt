@@ -106,6 +106,8 @@ Pipeline List:
     r       Refresh pipeline list
     <CR>    Open pipeline details
     R       Re-run pipeline
+    ]       Next page
+    [       Previous page
     q       Close view
 
 Pipeline Status:

@@ -97,6 +97,10 @@ function M.pipelines(opts)
 
   local query = "per_page=" .. tostring(opts.per_page or 20)
 
+  if opts.page and opts.page > 0 then
+    query = query .. "&page=" .. tostring(opts.page)
+  end
+
   if opts.ref and opts.ref ~= "" then
     query = query .. "&ref=" .. vim.uri_encode(opts.ref)
   end

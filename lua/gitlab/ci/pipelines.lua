@@ -69,9 +69,11 @@ function M.list()
     return
   end
 
+  local current_page = 1
+
   local function build_view(pipelines)
     local lines = {
-      "GitLab Pipelines",
+      string.format("GitLab Pipelines - page %d", current_page),
       "",
     }
 
@@ -87,6 +89,8 @@ function M.list()
       { key = "r",    label = "Refresh" },
       { key = "<CR>", label = "Details" },
       { key = "R",    label = "Re-run" },
+      { key = "]",    label = "Next page" },
+      { key = "[",    label = "Previous page" },
       { key = "q",    label = "Quit" },
     }
 
@@ -94,6 +98,7 @@ function M.list()
       local refreshed_pipelines, err = api.pipelines({
         cwd = root,
         per_page = 20,
+        page = current_page,
       })
 
       if not refreshed_pipelines then
@@ -102,6 +107,48 @@ function M.list()
       end
 
       buffer.replace(build_view(refreshed_pipelines))
+    end
+
+    local function next_page()
+      local next_pipelines, err = api.pipelines({
+        cwd = root,
+        per_page = 20,
+        page = current_page + 1,
+      })
+
+      if not next_pipelines then
+        notification.error(err)
+        return
+      end
+
+      if #next_pipelines == 0 then
+        notification.info("No more pipelines")
+        return
+      end
+
+      current_page = current_page + 1
+      buffer.replace(build_view(next_pipelines))
+    end
+
+    local function previous_page()
+      if current_page == 1 then
+        notification.info("Already on first page")
+        return
+      end
+
+      local prev_pipelines, err = api.pipelines({
+        cwd = root,
+        per_page = 20,
+        page = current_page - 1,
+      })
+
+      if not prev_pipelines then
+        notification.error(err)
+        return
+      end
+
+      current_page = current_page - 1
+      buffer.replace(build_view(prev_pipelines))
     end
 
     return {
@@ -113,6 +160,8 @@ function M.list()
       keymaps = {
         q = buffer.close_current,
         r = buffer.refresh,
+        ["]"] = next_page,
+        ["["] = previous_page,
 
         ["<CR>"] = function()
           local pipeline_id = navigation.pipeline_id_under_cursor()
