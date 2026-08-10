@@ -19,28 +19,14 @@ local function load_backend()
   if not module then
     notification.warn(
       "Unknown picker backend: "
-      .. tostring(name)
-      .. ", falling back to vim_ui"
+        .. tostring(name)
+        .. ", falling back to vim_ui"
     )
 
     return require(backends.vim_ui)
   end
 
-  local ok, backend = pcall(require, module)
-
-  if not ok then
-    notification.warn(
-      "Failed to load picker backend "
-      .. tostring(name)
-      .. ": "
-      .. tostring(backend)
-      .. "\nFalling back to vim_ui"
-    )
-
-    return require(backends.vim_ui)
-  end
-
-  return backend
+  return require(module)
 end
 
 function M.select(items, opts, callback)
