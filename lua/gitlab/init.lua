@@ -4,6 +4,7 @@ local M = {}
 
 function M.setup(opts)
   config.setup(opts)
+  require("gitlab.commands").setup()
 end
 
 return M
