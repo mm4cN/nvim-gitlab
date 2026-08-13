@@ -29,6 +29,8 @@ function M.retry_job(job_id)
     return
   end
 
+  notification.info("Retrying job #" .. tostring(job_id) .. "...")
+
   local _, err = api.request("projects/:id/jobs/" .. tostring(job_id) .. "/retry", {
     cwd = root,
     method = "POST",
@@ -39,7 +41,7 @@ function M.retry_job(job_id)
     return
   end
 
-  notification.info("Job retry requested: #" .. tostring(job_id))
+  notification.info("Job #" .. tostring(job_id) .. " retry requested")
   buffer.refresh()
 end
 
@@ -54,6 +56,8 @@ function M.play_job(job_id)
     return
   end
 
+  notification.info("Playing job #" .. tostring(job_id) .. "...")
+
   local _, err = api.request("projects/:id/jobs/" .. tostring(job_id) .. "/play", {
     cwd = root,
     method = "POST",
@@ -64,7 +68,7 @@ function M.play_job(job_id)
     return
   end
 
-  notification.info("Job play requested: #" .. tostring(job_id))
+  notification.info("Job #" .. tostring(job_id) .. " play requested")
   buffer.refresh()
 end
 
@@ -78,6 +82,8 @@ function M.retry_pipeline_jobs(pipeline_id)
   if not root then
     return
   end
+
+  notification.info("Retrying failed jobs for pipeline #" .. tostring(pipeline_id) .. "...")
 
   local jobs, jobs_err = api.pipeline_jobs(pipeline_id, {
     cwd = root,
@@ -146,6 +152,8 @@ function M.rerun_pipeline(pipeline_id)
     notification.error("Pipeline ref is missing")
     return
   end
+
+  notification.info("Rerunning pipeline on " .. ref .. "...")
 
   local output, run_err = require("gitlab.glab").run({
     "pipeline",

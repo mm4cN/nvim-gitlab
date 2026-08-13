@@ -40,6 +40,8 @@ function M.run()
     return
   end
 
+  notification.info("Running pipeline on " .. branch .. "...")
+
   local pipeline, err = api.run_pipeline({
     cwd = root,
     ref = branch,
