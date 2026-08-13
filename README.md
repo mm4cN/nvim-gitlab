@@ -32,6 +32,7 @@ Merge Requests, Issues, and project management features are currently out of sco
 - Neovim 0.12+
 - git
 - glab
+- [MunifTanjim/nui.nvim](https://github.com/MunifTanjim/nui.nvim) (required for `:GitlabPipelineRunProject`)
 
 ## Installation
 
@@ -40,6 +41,7 @@ Merge Requests, Issues, and project management features are currently out of sco
 ```lua
 {
     "mm4cN/nvim-gitlab",
+    dependencies = { "MunifTanjim/nui.nvim" },
     config = function()
         require("gitlab").setup()
     end,
@@ -51,6 +53,7 @@ Merge Requests, Issues, and project management features are currently out of sco
 ```lua
 use({
     "mm4cN/nvim-gitlab",
+    requires = { "MunifTanjim/nui.nvim" },
     config = function()
         require("gitlab").setup()
     end,
@@ -62,6 +65,7 @@ use({
 ```lua
 MiniDeps.add({
     source = "mm4cN/nvim-gitlab",
+    depends = { "MunifTanjim/nui.nvim" },
 })
 
 require("gitlab").setup()
@@ -71,6 +75,7 @@ require("gitlab").setup()
 
 ```lua
 vim.pack.add({
+    { src = "https://github.com/MunifTanjim/nui.nvim" },
     { src = "https://github.com/mm4cN/nvim-gitlab" },
 })
 
@@ -170,6 +175,7 @@ With Telescope enabled, pickers provide additional features:
 
 ```vim
 :GitlabPipelineRun
+:GitlabPipelineRunProject   " cross-project runner (spec:inputs discovery is experimental)
 :GitlabPipelineList
 :GitlabPipelineStatus
 :GitlabPipelineDetails

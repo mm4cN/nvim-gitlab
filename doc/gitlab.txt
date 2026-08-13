@@ -39,6 +39,17 @@ Pipelines:
     :GitlabPipelineRun
         Run a new pipeline for the current branch.
 
+    :GitlabPipelineRunProject
+        Open the cross-project pipeline runner. Pre-fills the current
+        repository project and branch. Supports editing the target project
+        and ref, and running a pipeline for any accessible GitLab project.
+
+        Automatic spec:inputs discovery is EXPERIMENTAL. It fetches the
+        root .gitlab-ci.yml via the Repository Files API and parses the
+        spec:inputs block locally. Only simple 2-space indented YAML with
+        scalar defaults is supported. Inputs defined via include:, YAML
+        anchors, block scalars, or array defaults may not be discovered.
+
     :GitlabPipelineList
         List recent project pipelines.
 

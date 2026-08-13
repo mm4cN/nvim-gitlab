@@ -110,6 +110,96 @@ function M.pipelines(opts)
   })
 end
 
+-- parse_spec_inputs extracts spec:inputs from raw .gitlab-ci.yml content.
+-- EXPERIMENTAL: GitLab has no REST endpoint for spec:inputs discovery (issue #519944).
+-- Supported subset only: 2-space indented YAML, scalar defaults, block-style options lists.
+-- Not supported: include: directives, YAML anchors/aliases, block scalars, tabs, array defaults.
+local function parse_spec_inputs(content)
+  local inputs = {}
+  local lines = vim.split(content, "\n", { plain = true })
+
+  local in_spec = false
+  local in_inputs = false
+  local current = nil
+  local in_options = false
+
+  for _, line in ipairs(lines) do
+    if line:match("^%s*#") or line:match("^%s*$") then
+      -- skip comments and blank lines
+    else
+      local indent = #line:match("^(%s*)")
+      local trimmed = vim.trim(line)
+
+      if indent == 0 then
+        in_spec = trimmed == "spec:"
+        in_inputs = false
+        current = nil
+        in_options = false
+      elseif in_spec and indent == 2 then
+        in_inputs = trimmed == "inputs:"
+        current = nil
+        in_options = false
+      elseif in_inputs and indent == 4 then
+        local name = trimmed:match("^([%w_%-]+)%s*:$")
+        if name then
+          current = { name = name, type = "string", value = "" }
+          table.insert(inputs, current)
+          in_options = false
+        end
+      elseif in_inputs and current and indent == 6 then
+        local key, val = trimmed:match("^([%w_%-]+)%s*:%s*(.-)%s*$")
+        if key == "options" then
+          in_options = true
+          current.options = {}
+        elseif key then
+          in_options = false
+          val = val:gsub('^["\']', ""):gsub('["\']$', "")
+          if key == "default" then
+            current.default = val
+            current.value = val
+          elseif key == "description" then
+            current.description = val
+          elseif key == "type" then
+            current.type = val
+          end
+        end
+      elseif in_inputs and current and in_options and indent == 8 then
+        local item = trimmed:match("^%-%s*(.+)$")
+        if item then
+          item = item:gsub('^["\']', ""):gsub('["\']$', "")
+          table.insert(current.options, item)
+        end
+      end
+    end
+  end
+
+  return inputs
+end
+
+function M.pipeline_inputs(opts)
+  opts = opts or {}
+
+  if not opts.ref or opts.ref == "" then
+    return nil, "ref is required"
+  end
+
+  local path
+  if opts.project and opts.project ~= "" then
+    path = "projects/" .. opts.project:gsub("/", "%%2F")
+        .. "/repository/files/.gitlab-ci.yml/raw?ref=" .. vim.uri_encode(opts.ref)
+  else
+    path = "projects/:id/repository/files/.gitlab-ci.yml/raw?ref=" .. vim.uri_encode(opts.ref)
+  end
+
+  local content, err = glab.run({ "api", path }, { cwd = opts.cwd })
+
+  if not content or content == "" then
+    return nil, err or "CI file not found"
+  end
+
+  return parse_spec_inputs(content), nil
+end
+
 function M.run_pipeline(opts)
   opts = opts or {}
 

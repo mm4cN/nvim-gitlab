@@ -49,6 +49,26 @@ function M.remote_url()
   return output, nil
 end
 
+function M.remote_project()
+  local remote, err = M.remote_url()
+
+  if not remote then
+    return nil, err
+  end
+
+  local project = remote:match("^git@[^:]+:(.+)$")
+      or remote:match("^https?://[^/]+/(.+)$")
+      or remote:match("^ssh://git@[^/]+[:/](.+)$")
+
+  if not project or project == "" then
+    return nil, "Cannot extract project path from remote: " .. remote
+  end
+
+  project = project:gsub("%.git$", "")
+
+  return project, nil
+end
+
 function M.remote_host()
   local remote, err = M.remote_url()
 
