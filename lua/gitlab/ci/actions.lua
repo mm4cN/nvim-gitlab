@@ -1,4 +1,5 @@
 local api = require("gitlab.api")
+local buffer = require("gitlab.ui.buffer")
 local config = require("gitlab.config")
 local git = require("gitlab.git")
 local confirm = require("gitlab.ui.confirm")
@@ -39,6 +40,7 @@ function M.retry_job(job_id)
   end
 
   notification.info("Job retry requested: #" .. tostring(job_id))
+  buffer.refresh()
 end
 
 function M.play_job(job_id)
@@ -63,6 +65,7 @@ function M.play_job(job_id)
   end
 
   notification.info("Job play requested: #" .. tostring(job_id))
+  buffer.refresh()
 end
 
 function M.retry_pipeline_jobs(pipeline_id)
@@ -114,6 +117,7 @@ function M.retry_pipeline_jobs(pipeline_id)
   end
 
   notification.info("Retried " .. retried .. " job(s)")
+  buffer.refresh()
 end
 
 function M.rerun_pipeline(pipeline_id)
@@ -158,6 +162,7 @@ function M.rerun_pipeline(pipeline_id)
   end
 
   notification.info(output ~= "" and output or "Pipeline rerun requested: " .. ref)
+  buffer.refresh()
 end
 
 return M

@@ -201,8 +201,10 @@ Refreshable pipeline and job views support:
 - `<CR>` Open details
 - `L` Open logs
 - `A` Download artifacts
-- `R` Retry job / Re-run pipeline
-- `P` Play manual job
+- `R` Retry job / Re-run pipeline (auto-refreshes view)
+- `P` Play manual job (auto-refreshes view)
+- `]` Next page (pipeline list)
+- `[` Previous page (pipeline list)
 - `b` Navigate back
 - `q` Close view
 
@@ -211,7 +213,6 @@ Refreshable pipeline and job views support:
 
 ### CI/CD
 
-- View refresh
 - Artifact browser
 - Pipeline filtering
 - Pipeline search
