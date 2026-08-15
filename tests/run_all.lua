@@ -1,0 +1,9 @@
+require("tests.spec.smoke_spec")
+require("tests.spec.git_spec")
+require("tests.spec.context_spec")
+require("tests.spec.api_spec")
+require("tests.spec.glab_spec")
+require("tests.spec.spec_inputs_spec")
+require("tests.spec.pagination_spec")
+
+require("tests.runner").report()

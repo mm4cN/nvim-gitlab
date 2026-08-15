@@ -216,6 +216,16 @@ Refreshable pipeline and job views support:
 - `q` Close view
 
 
+## Development
+
+### Running Tests
+
+```bash
+make test
+```
+
+Tests run headlessly via Neovim and require no GitLab credentials or network access.
+
 ## Planned Features
 
 ### CI/CD
