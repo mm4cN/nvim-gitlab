@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-16
+
+### Added
+
+- **Pipeline variables** — the cross-project runner now supports GitLab pipeline variables independently from `spec:inputs`. Press `a` in normal mode on any runner field to add a variable; enter it as `KEY=VALUE`. Variables are passed to `glab ci run` as `--variable KEY=VALUE`. Up to 7 variables can be added per run (UI limit, not a GitLab restriction).
+- **Ref picker** — press `<C-r>` on the Ref field in the cross-project runner to pick a branch from the selected project. Branches are fetched from the GitLab API for the currently entered project. Manual ref entry remains available at all times.
+- **Project context** — `project`, `ref`, and local repository root are now resolved together at runner startup. If any field cannot be resolved the runner opens with empty fields and reports the specific error. No partial context is used.
+
+### Changed
+
+- `:GitlabPipelineRunProject` initialises project, ref, and root as a unit via an explicit context. If context resolution fails the runner opens with empty fields rather than silently using partial git state.
+- All project-scoped API functions (`pipelines`, `pipeline`, `pipeline_jobs`, `job`, `latest_pipeline`, `pipeline_inputs`, `run_pipeline`) now accept `opts.project`. When provided, the explicit project is always used and there is no fallback to the cwd-derived project on failure.
+
 ## [0.7.0] - 2026-08-14
 
 ### Added

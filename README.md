@@ -132,6 +132,7 @@ With Telescope enabled, pickers provide additional features:
 - Show latest pipeline status
 - Open pipeline details
 - Re-run pipelines
+- Cross-project pipeline runner with ref picker and pipeline variables
 
 ### CI Jobs
 
@@ -175,7 +176,7 @@ With Telescope enabled, pickers provide additional features:
 
 ```vim
 :GitlabPipelineRun
-:GitlabPipelineRunProject   " cross-project runner (spec:inputs discovery is experimental)
+:GitlabPipelineRunProject   " cross-project runner with ref picker and pipeline variables
 :GitlabPipelineList
 :GitlabPipelineStatus
 :GitlabPipelineDetails

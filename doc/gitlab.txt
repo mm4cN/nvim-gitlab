@@ -44,6 +44,27 @@ Pipelines:
         repository project and branch. Supports editing the target project
         and ref, and running a pipeline for any accessible GitLab project.
 
+        Runner fields:
+
+            Project         GitLab project in namespace/project format.
+            Ref / Branch    Branch or ref to run the pipeline on.
+            Inputs          Discovered spec:inputs fields (experimental).
+            Variables       User-defined pipeline variables (KEY=VALUE).
+
+        Runner keybindings:
+
+            Tab / S-Tab     Move to next / previous field.
+            <C-r>           Pick a branch from the selected project
+                            (available on the Ref field only).
+            a               Add a pipeline variable field (normal mode).
+            r               Refresh spec:inputs from the current project/ref.
+            <CR>            Run the pipeline.
+            q / <Esc>       Close the runner.
+
+        Pipeline variables are independent from spec:inputs. Variables are
+        passed to glab as --variable KEY=VALUE. Up to 7 variable fields can
+        be added per run (UI limit).
+
         Automatic spec:inputs discovery is EXPERIMENTAL. It fetches the
         root .gitlab-ci.yml via the Repository Files API and parses the
         spec:inputs block locally. Only simple 2-space indented YAML with

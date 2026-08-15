@@ -2,6 +2,15 @@ local glab = require("gitlab.glab")
 
 local M = {}
 
+-- Returns the project URL prefix for path construction.
+-- Explicit project always wins; absent falls back to the glab :id placeholder.
+local function project_prefix(opts)
+  if opts and opts.project and opts.project ~= "" then
+    return "projects/" .. opts.project:gsub("/", "%%2F")
+  end
+  return "projects/:id"
+end
+
 function M.request(path, opts)
   opts = opts or {}
   local args = { "api", path }
@@ -41,7 +50,7 @@ function M.latest_pipeline(opts)
     query = query .. "&ref=" .. ref
   end
 
-  local pipelines, err = M.get("projects/:id/pipelines?" .. query, {
+  local pipelines, err = M.get(project_prefix(opts) .. "/pipelines?" .. query, {
     cwd = opts.cwd,
   })
 
@@ -63,7 +72,7 @@ function M.pipeline_jobs(pipeline_id, opts)
     return nil, "pipeline_id is required"
   end
 
-  return M.get("projects/:id/pipelines/" .. tostring(pipeline_id) .. "/jobs", {
+  return M.get(project_prefix(opts) .. "/pipelines/" .. tostring(pipeline_id) .. "/jobs", {
     cwd = opts.cwd,
   })
 end
@@ -75,7 +84,7 @@ function M.pipeline(pipeline_id, opts)
     return nil, "pipeline_id is required"
   end
 
-  return M.get("projects/:id/pipelines/" .. tostring(pipeline_id), {
+  return M.get(project_prefix(opts) .. "/pipelines/" .. tostring(pipeline_id), {
     cwd = opts.cwd,
   })
 end
@@ -87,7 +96,7 @@ function M.job(job_id, opts)
     return nil, "job_id is required"
   end
 
-  return M.get("projects/:id/jobs/" .. tostring(job_id), {
+  return M.get(project_prefix(opts) .. "/jobs/" .. tostring(job_id), {
     cwd = opts.cwd,
   })
 end
@@ -105,7 +114,7 @@ function M.pipelines(opts)
     query = query .. "&ref=" .. vim.uri_encode(opts.ref)
   end
 
-  return M.get("projects/:id/pipelines?" .. query, {
+  return M.get(project_prefix(opts) .. "/pipelines?" .. query, {
     cwd = opts.cwd,
   })
 end
@@ -176,6 +185,36 @@ local function parse_spec_inputs(content)
   return inputs
 end
 
+function M.branches(opts)
+  opts = opts or {}
+
+  if not opts.project or opts.project == "" then
+    return nil, "project is required"
+  end
+
+  local branches, err = M.get(
+    project_prefix(opts) .. "/repository/branches?per_page=100",
+    { cwd = opts.cwd }
+  )
+
+  if err then
+    return nil, err
+  end
+
+  if not branches then
+    return {}, nil
+  end
+
+  local names = {}
+  for _, b in ipairs(branches) do
+    if b.name and b.name ~= "" then
+      table.insert(names, b.name)
+    end
+  end
+
+  return names, nil
+end
+
 function M.pipeline_inputs(opts)
   opts = opts or {}
 
@@ -183,13 +222,7 @@ function M.pipeline_inputs(opts)
     return nil, "ref is required"
   end
 
-  local path
-  if opts.project and opts.project ~= "" then
-    path = "projects/" .. opts.project:gsub("/", "%%2F")
-        .. "/repository/files/.gitlab-ci.yml/raw?ref=" .. vim.uri_encode(opts.ref)
-  else
-    path = "projects/:id/repository/files/.gitlab-ci.yml/raw?ref=" .. vim.uri_encode(opts.ref)
-  end
+  local path = project_prefix(opts) .. "/repository/files/.gitlab-ci.yml/raw?ref=" .. vim.uri_encode(opts.ref)
 
   local content, err = glab.run({ "api", path }, { cwd = opts.cwd })
 
@@ -207,7 +240,7 @@ function M.run_pipeline(opts)
     return nil, "ref is required"
   end
 
-  return M.request("projects/:id/pipeline", {
+  return M.request(project_prefix(opts) .. "/pipeline", {
     cwd = opts.cwd,
     method = "POST",
     fields = {

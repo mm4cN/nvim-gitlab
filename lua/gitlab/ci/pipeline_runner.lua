@@ -3,14 +3,16 @@ local Layout = require("nui.layout")
 local Popup = require("nui.popup")
 
 local api = require("gitlab.api")
-local git = require("gitlab.git")
+local context = require("gitlab.ci.context")
 local glab = require("gitlab.glab")
 local notification = require("gitlab.ui.notification")
+local picker = require("gitlab.ui.picker")
 
 local M = {}
 
 local MAX_DYNAMIC_FIELDS = 7
-local HINTS_SIZE = 3
+local MAX_VARIABLES = 7 -- UI layout limit, not a GitLab restriction
+local HINTS_SIZE = 4
 
 local function make_input(label, default, on_change)
   return Input({
@@ -53,7 +55,7 @@ local function fetch_inputs(state)
   local inputs, _ = api.pipeline_inputs({
     project = state.project,
     ref = state.ref,
-    cwd = git.root() or vim.fn.getcwd(),
+    cwd = state.root or vim.fn.getcwd(),
   })
 
   if not inputs or #inputs == 0 then
@@ -82,7 +84,7 @@ local function fetch_inputs(state)
   end
 end
 
-local function build_and_mount(state, on_run, on_refresh, on_close)
+local function build_and_mount(state, on_run, on_refresh, on_pick_ref, on_add_variable, on_close)
   local project_input = make_input("Project", state.project, function(v)
     state.project = v
   end)
@@ -100,6 +102,23 @@ local function build_and_mount(state, on_run, on_refresh, on_close)
     table.insert(field_inputs, input)
   end
 
+  local var_inputs = {}
+  for _, var in ipairs(state.variables) do
+    local v = var
+    local display = v.key ~= "" and (v.key .. "=" .. v.value) or ""
+    local input = make_input("Variable (KEY=VALUE)", display, function(raw)
+      local eq = raw:find("=")
+      if eq then
+        v.key = raw:sub(1, eq - 1)
+        v.value = raw:sub(eq + 1)
+      else
+        v.key = raw
+        v.value = ""
+      end
+    end)
+    table.insert(var_inputs, input)
+  end
+
   local hints_popup = Popup({
     border = { style = "none" },
     win_options = { winhighlight = "Normal:Normal" },
@@ -107,7 +126,8 @@ local function build_and_mount(state, on_run, on_refresh, on_close)
   })
 
   local n_dynamic = #field_inputs
-  local height = (2 + n_dynamic) * 3 + HINTS_SIZE
+  local n_vars = #var_inputs
+  local height = (2 + n_dynamic + n_vars) * 3 + HINTS_SIZE
 
   local boxes = {
     Layout.Box(project_input, { size = 3 }),
@@ -115,6 +135,9 @@ local function build_and_mount(state, on_run, on_refresh, on_close)
   }
   for _, fi in ipairs(field_inputs) do
     table.insert(boxes, Layout.Box(fi, { size = 3 }))
+  end
+  for _, vi in ipairs(var_inputs) do
+    table.insert(boxes, Layout.Box(vi, { size = 3 }))
   end
   table.insert(boxes, Layout.Box(hints_popup, { size = HINTS_SIZE }))
 
@@ -129,12 +152,17 @@ local function build_and_mount(state, on_run, on_refresh, on_close)
   vim.api.nvim_buf_set_lines(hints_popup.bufnr, 0, -1, false, {
     "",
     "  Tab  Next field    r  Refresh    <CR>  Run    q  Close",
+    "  <C-r>  Pick ref (Ref field)    a  Add variable",
+    "",
   })
   vim.bo[hints_popup.bufnr].modifiable = false
 
   local tab_order = { project_input, ref_input }
   for _, fi in ipairs(field_inputs) do
     table.insert(tab_order, fi)
+  end
+  for _, vi in ipairs(var_inputs) do
+    table.insert(tab_order, vi)
   end
 
   for i, component in ipairs(tab_order) do
@@ -153,6 +181,7 @@ local function build_and_mount(state, on_run, on_refresh, on_close)
     component:map("n", "<CR>", on_run, { noremap = true })
 
     component:map("n", "r", on_refresh, { noremap = true })
+    component:map("n", "a", on_add_variable, { noremap = true })
 
     component:map("i", "<Esc>", function()
       vim.cmd("stopinsert")
@@ -162,14 +191,25 @@ local function build_and_mount(state, on_run, on_refresh, on_close)
     component:map("n", "<Esc>", on_close, { noremap = true })
   end
 
-  return layout, project_input
+  ref_input:map("i", "<C-r>", function()
+    vim.cmd("stopinsert")
+    on_pick_ref()
+  end, { noremap = true })
+
+  ref_input:map("n", "<C-r>", on_pick_ref, { noremap = true })
+
+  return layout, project_input, ref_input, var_inputs
 end
 
 function M.open()
+  local ctx, ctx_err = context.from_cwd()
+
   local state = {
-    project = git.remote_project() or "",
-    ref = git.branch() or "",
+    project = ctx and ctx.project or "",
+    ref = ctx and ctx.ref or "",
+    root = ctx and ctx.root or nil,
     fields = {},
+    variables = {},
   }
 
   local current_layout = nil
@@ -208,7 +248,8 @@ function M.open()
       project = state.project,
       ref = state.ref,
       inputs = inputs,
-      cwd = git.root() or vim.fn.getcwd(),
+      variables = state.variables,
+      cwd = state.root or vim.fn.getcwd(),
     })
 
     if err then
@@ -219,17 +260,70 @@ function M.open()
     notification.info("Pipeline triggered for " .. state.project .. " on " .. state.ref)
   end
 
-  local refresh  -- forward declaration for mutual reference with build
+  local refresh      -- forward declaration for mutual reference with build
+  local build        -- forward declaration for mutual reference with pick_ref
+  local add_variable -- forward declaration for mutual reference with build
 
-  local function build()
+  local function pick_ref()
+    if state.project == "" then
+      notification.warn("Set project before picking a ref")
+      return
+    end
+
+    notification.info("Fetching refs for " .. state.project .. "...")
+
+    local branches, err = api.branches({
+      project = state.project,
+      cwd = state.root or vim.fn.getcwd(),
+    })
+
+    if err then
+      notification.error("Could not fetch branches: " .. err)
+      return
+    end
+
+    if not branches or #branches == 0 then
+      notification.warn("No branches found for " .. state.project)
+      return
+    end
+
+    picker.select(branches, { prompt = "Select ref" }, function(selected)
+      if not selected then
+        return
+      end
+      state.ref = selected
+      build({ focus_ref = true })
+    end)
+  end
+
+  add_variable = function()
+    if #state.variables >= MAX_VARIABLES then
+      notification.warn("Maximum number of variables reached (" .. MAX_VARIABLES .. ")")
+      return
+    end
+    table.insert(state.variables, { key = "", value = "" })
+    build({ focus_last_var = true })
+  end
+
+  build = function(opts)
+    opts = opts or {}
+
     if current_layout then
       current_layout:unmount()
       current_layout = nil
     end
 
-    local layout, first_input = build_and_mount(state, run, function() refresh() end, close)
+    local layout, project_input, ref_input, var_inputs =
+      build_and_mount(state, run, function() refresh() end, pick_ref, add_variable, close)
     current_layout = layout
-    focus(first_input)
+
+    if opts.focus_last_var and var_inputs and #var_inputs > 0 then
+      focus(var_inputs[#var_inputs])
+    elseif opts.focus_ref then
+      focus(ref_input)
+    else
+      focus(project_input)
+    end
   end
 
   refresh = function()
@@ -252,8 +346,8 @@ function M.open()
   fetch_inputs(state)
   build()
 
-  if state.project == "" then
-    notification.warn("Could not detect GitLab project — enter it manually")
+  if not ctx then
+    notification.warn(ctx_err or "Could not detect project context — enter project and ref manually")
   end
 end
 

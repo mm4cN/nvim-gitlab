@@ -78,6 +78,8 @@ end
 
 -- run_pipeline uses `glab ci run` to support cross-project execution and typed pipeline inputs.
 -- opts.inputs is a list of { name, value, type } tables corresponding to spec:inputs entries.
+-- opts.variables is a list of { key, value } tables for GitLab pipeline variables.
+-- Inputs and variables are kept separate: inputs map to --input, variables to --variable.
 -- Distinct from api.run_pipeline which calls the REST API and returns pipeline JSON.
 function M.run_pipeline(opts)
   opts = opts or {}
@@ -98,6 +100,12 @@ function M.run_pipeline(opts)
       return nil, err
     end
     vim.list_extend(args, { "--input", formatted })
+  end
+
+  for _, var in ipairs(opts.variables or {}) do
+    if var.key and var.key ~= "" then
+      vim.list_extend(args, { "--variable", var.key .. "=" .. tostring(var.value or "") })
+    end
   end
 
   return M.run(args, { cwd = opts.cwd })
