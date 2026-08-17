@@ -1,7 +1,6 @@
 local actions = require("gitlab.ci.actions")
 local api = require("gitlab.api")
 local artifacts = require("gitlab.ci.artifacts")
-local buffer = require("gitlab.ui.buffer")
 local format = require("gitlab.ci.format")
 local git = require("gitlab.git")
 local notification = require("gitlab.ui.notification")
@@ -78,117 +77,69 @@ end
 function M.show(opts)
   opts = opts or {}
 
+  local root = opts.root or repo_root()
+  if not root then return end
+
+  local function do_show_job(job)
+    picker.show_job({
+      job = job,
+      actions = {
+        logs = function()
+          require("gitlab.ci.jobs").logs({ args = job.id, root = root })
+        end,
+        artifacts = function()
+          artifacts.download({ job_id = job.id })
+        end,
+        retry = function()
+          actions.retry_job(job.id)
+        end,
+        play = function()
+          if job.status ~= "manual" then
+            notification.warn("Job is not manual: " .. tostring(job.status))
+            return
+          end
+          actions.play_job(job.id)
+        end,
+        refresh = function()
+          local refreshed, err = api.job(job.id, { cwd = root })
+          if not refreshed then
+            notification.error(err)
+            return
+          end
+          do_show_job(refreshed)
+        end,
+      },
+      on_back = opts.on_back,
+    })
+  end
+
+  -- Pre-fetched job provided by caller (avoids redundant API call)
+  if opts.job then
+    do_show_job(opts.job)
+    return
+  end
+
+  -- Fetch by explicit job_id
   local job_id = opts.job_id
-  local root = repo_root()
-
-  if not root then
+  if job_id and job_id ~= "" then
+    local job, err = api.job(job_id, { cwd = root })
+    if not job then
+      notification.error(err)
+      return
+    end
+    do_show_job(job)
     return
   end
 
-  if not job_id or job_id == "" then
-    pick_job(root, function(job)
-      M.show({
-        job_id = job.id,
-      })
-    end)
-    return
-  end
-
-  local function build_view(job_data)
-    local commit = job_data.commit or {}
-    local pipeline = job_data.pipeline or {}
-
-    local lines = {
-      "Job #" .. tostring(job_data.id),
-      "",
-      "Name:      " .. format.value(job_data.name),
-      "Status:    " .. format.status_icon(job_data.status) .. " " .. format.value(job_data.status),
-      "Stage:     " .. format.value(job_data.stage),
-      "Ref:       " .. format.value(job_data.ref),
-      "Duration:  " .. format.duration(job_data.duration),
-      "Started:   " .. format.value(job_data.started_at),
-      "Finished:  " .. format.value(job_data.finished_at),
-      "",
-      "Pipeline:",
-      "  ID:      " .. format.value(pipeline.id),
-      "  Status:  " .. format.status_icon(pipeline.status) .. " " .. format.value(pipeline.status),
-      "  Ref:     " .. format.value(pipeline.ref),
-      "",
-      "Commit:",
-      "  SHA:     " .. format.short_sha(commit.id or commit.sha),
-      "  Title:   " .. format.value(commit.title),
-      "  Author:  " .. format.value(commit.author_name),
-      "",
-      "Actions:",
-      "  :GitlabJobLogs " .. tostring(job_data.id),
-      "  :GitlabJobRetry " .. tostring(job_data.id),
-    }
-
-    local function refresh_view()
-      local refreshed_job, err = api.job(job_id, {
-        cwd = root,
-      })
-
-      if not refreshed_job then
-        notification.error(err)
-        return
-      end
-
-      buffer.replace(build_view(refreshed_job))
+  -- Let user pick a job
+  pick_job(root, function(job)
+    local full_job, err = api.job(job.id, { cwd = root })
+    if not full_job then
+      notification.error(err)
+      return
     end
-
-    local hints = {}
-    if job_data.status == "manual" then
-      table.insert(hints, { key = "P", label = "Play" })
-    end
-    table.insert(hints, { key = "r", label = "Refresh" })
-    table.insert(hints, { key = "A", label = "Artifacts" })
-    table.insert(hints, { key = "R", label = "Retry" })
-    table.insert(hints, { key = "b", label = "Back" })
-    table.insert(hints, { key = "q", label = "Quit" })
-
-    local keymaps = {
-      q = buffer.close_current,
-      b = buffer.back,
-      r = buffer.refresh,
-
-      A = function()
-        artifacts.download({
-          job_id = job_data.id,
-        })
-      end,
-
-      R = function()
-        actions.retry_job(job_data.id)
-      end,
-    }
-
-    if job_data.status == "manual" then
-      keymaps.P = function()
-        actions.play_job(job_data.id)
-      end
-    end
-
-    return {
-      title = "GitLab Job #" .. tostring(job_data.id),
-      filetype = "gitlab",
-      lines = lines,
-      hints = hints,
-      keymaps = keymaps,
-      refresh = refresh_view,
-    }
-  end
-
-  local job, err = api.job(job_id, {
-    cwd = root,
-  })
-
-  if not job then
-    notification.error(err)
-    return
-  end
-
-  buffer.push(build_view(job))
+    do_show_job(full_job)
+  end)
 end
 
 return M

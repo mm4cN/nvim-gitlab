@@ -33,4 +33,16 @@ function M.select(items, opts, callback)
   return load_backend().select(items, opts or {}, callback)
 end
 
+function M.show_pipeline(opts)
+  return load_backend().show_pipeline(opts)
+end
+
+function M.show_jobs(opts)
+  return load_backend().show_jobs(opts)
+end
+
+function M.show_job(opts)
+  return load_backend().show_job(opts)
+end
+
 return M

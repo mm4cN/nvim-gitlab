@@ -3,11 +3,10 @@ local artifacts = require("gitlab.ci.artifacts")
 local format = require("gitlab.ci.format")
 local git = require("gitlab.git")
 local glab = require("gitlab.glab")
-local buffer = require("gitlab.ui.buffer")
+local job_details = require("gitlab.ci.job_details")
 local notification = require("gitlab.ui.notification")
 local picker = require("gitlab.ui.picker")
 local api = require("gitlab.api")
-local navigation = require("gitlab.ui.navigation")
 local log_buffer = require("gitlab.ci.log_buffer")
 
 local M = {}
@@ -92,7 +91,7 @@ local function show_logs(root, job_id)
 end
 
 function M.logs(opts)
-  local root = repo_root()
+  local root = (opts and opts.root) or repo_root()
   if not root then
     return
   end
@@ -221,135 +220,6 @@ function M.list()
     return
   end
 
-  local pipeline_id = pipeline.id
-
-  local function build_view(pipeline_data, jobs_data)
-    local lines = {
-      "Jobs for Pipeline #" .. tostring(pipeline_data.id),
-      "",
-      "Ref:    " .. tostring(pipeline_data.ref),
-      "Status: " .. tostring(pipeline_data.status),
-      "",
-    }
-
-    for _, job in ipairs(jobs_data) do
-      table.insert(lines, format.job(job))
-    end
-
-    local hints = {
-      { key = "r",    label = "Refresh" },
-      { key = "<CR>", label = "Details" },
-      { key = "L",    label = "Logs" },
-      { key = "A",    label = "Artifacts" },
-      { key = "R",    label = "Retry" },
-      { key = "P",    label = "Play" },
-      { key = "b",    label = "Back" },
-      { key = "q",    label = "Quit" },
-    }
-
-    local function refresh_view()
-      local refreshed_pipeline, refresh_pipeline_err = api.pipeline(pipeline_id, {
-        cwd = root,
-      })
-
-      if not refreshed_pipeline then
-        notification.error(refresh_pipeline_err)
-        return
-      end
-
-      local refreshed_jobs, jobs_err = api.pipeline_jobs(pipeline_id, {
-        cwd = root,
-      })
-
-      if not refreshed_jobs then
-        notification.error(jobs_err)
-        return
-      end
-
-      buffer.replace(build_view(refreshed_pipeline, refreshed_jobs))
-    end
-
-    return {
-      title = "GitLab Jobs",
-      filetype = "gitlab",
-      lines = lines,
-      hints = hints,
-      keymaps = {
-        q = buffer.close_current,
-        b = buffer.back,
-        r = buffer.refresh,
-
-        ["<CR>"] = function()
-          local job_id = navigation.job_id_under_cursor()
-          if not job_id then
-            notification.error("No job id under cursor")
-            return
-          end
-          require("gitlab.ci.job_details").show({
-            job_id = job_id,
-          })
-        end,
-
-        L = function()
-          local job_id = navigation.job_id_under_cursor()
-          if not job_id then
-            notification.error("No job id under cursor")
-            return
-          end
-          show_logs(root, job_id)
-        end,
-
-        A = function()
-          local job_id = navigation.job_id_under_cursor()
-          if not job_id then
-            notification.error("No job id under cursor")
-            return
-          end
-          artifacts.download({
-            job_id = job_id,
-          })
-        end,
-
-        R = function()
-          local job_id = navigation.job_id_under_cursor()
-
-          if not job_id then
-            notification.error("No job id under cursor")
-
-            return
-          end
-
-          actions.retry_job(job_id)
-        end,
-
-        P = function()
-          local job_id = navigation.job_id_under_cursor()
-          if not job_id then
-            notification.error("No job id under cursor")
-            return
-          end
-
-          local job, err = api.job(job_id, {
-            cwd = root,
-          })
-
-          if not job then
-            notification.error(err)
-            return
-          end
-
-          if job.status ~= "manual" then
-            notification.warn("Job is not manual: " .. tostring(job.status))
-            return
-          end
-
-          actions.play_job(job_id)
-        end,
-      },
-      refresh = refresh_view,
-    }
-  end
-
   local jobs, jobs_err = api.pipeline_jobs(pipeline.id, {
     cwd = root,
   })
@@ -359,7 +229,62 @@ function M.list()
     return
   end
 
-  buffer.show(build_view(pipeline, jobs))
+  local do_show_jobs -- forward declaration
+
+  do_show_jobs = function(pipeline_data, jobs_data)
+    picker.show_jobs({
+      pipeline = pipeline_data,
+      jobs = jobs_data,
+      actions = {
+        details = function(job)
+          local full_job, err = api.job(job.id, { cwd = root })
+          if not full_job then
+            notification.error(err)
+            return
+          end
+          job_details.show({
+            job = full_job,
+            root = root,
+            on_back = function()
+              do_show_jobs(pipeline_data, jobs_data)
+            end,
+          })
+        end,
+        logs = function(job)
+          show_logs(root, job.id)
+        end,
+        artifacts = function(job)
+          artifacts.download({ job_id = job.id })
+        end,
+        retry = function(job)
+          actions.retry_job(job.id)
+        end,
+        play = function(job)
+          if job.status ~= "manual" then
+            notification.warn("Job is not manual: " .. tostring(job.status))
+            return
+          end
+          actions.play_job(job.id)
+        end,
+        refresh = function()
+          local r_p, p_err = api.pipeline(pipeline_data.id, { cwd = root })
+          if not r_p then
+            notification.error(p_err)
+            return
+          end
+          local r_j, j_err = api.pipeline_jobs(pipeline_data.id, { cwd = root })
+          if not r_j then
+            notification.error(j_err)
+            return
+          end
+          do_show_jobs(r_p, r_j)
+        end,
+      },
+      on_back = nil,
+    })
+  end
+
+  do_show_jobs(pipeline, jobs)
 end
 
 return M
