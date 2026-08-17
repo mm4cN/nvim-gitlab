@@ -5,5 +5,6 @@ require("tests.spec.api_spec")
 require("tests.spec.glab_spec")
 require("tests.spec.spec_inputs_spec")
 require("tests.spec.pagination_spec")
+require("tests.spec.commands_spec")
 
 require("tests.runner").report()

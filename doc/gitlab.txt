@@ -78,7 +78,7 @@ Pipelines:
         Show the latest pipeline for the current branch.
 
     :GitlabPipelineDetails
-    :GitlabPipelineDetails {pipeline_id}
+        Select a pipeline and open its details view.
 
 Jobs:
 
@@ -86,14 +86,16 @@ Jobs:
         List jobs from the latest pipeline.
 
     :GitlabJobLogs
-    :GitlabJobLogs {job_id}
+        Select a job and open its logs in a named buffer.
 
     :GitlabJobRetry
-    :GitlabJobRetry {job_id}
+        Select a job and retry it.
 
-    :GitlabJobDetails {job_id}
+    :GitlabJobDetails
+        Select a job and open its details view.
 
-    :GitlabJobArtifacts {job_id}
+    :GitlabJobArtifacts
+        Select a job and download its artifacts.
 
 ==============================================================================
 PICKERS                                                *gitlab-pickers*

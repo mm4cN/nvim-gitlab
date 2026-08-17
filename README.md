@@ -180,24 +180,16 @@ With Telescope enabled, pickers provide additional features:
 :GitlabPipelineList
 :GitlabPipelineStatus
 :GitlabPipelineDetails
-:GitlabPipelineDetails <pipeline_id>
 ```
 
 ### Jobs
 
 ```vim
 :GitlabJobList
-
 :GitlabJobLogs
-:GitlabJobLogs <job_id>
-
 :GitlabJobRetry
-:GitlabJobRetry <job_id>
-
 :GitlabJobDetails
-:GitlabJobDetails <job_id>
-
-:GitlabJobArtifacts <job_id>
+:GitlabJobArtifacts
 ```
 
 ### Interactive Views

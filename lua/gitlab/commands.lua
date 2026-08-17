@@ -36,36 +36,22 @@ function M.setup()
   command("GitlabPipelineRunProject", pipeline_runner.open, {})
   command("GitlabPipelineList", pipelines.list, {})
   command("GitlabPipelineStatus", pipelines.status, {})
-  command("GitlabPipelineDetails", function(opts)
-    details.show({
-      pipeline_id = opts.args,
-    })
-  end, {
-    nargs = "?",
-  })
+  command("GitlabPipelineDetails", function()
+    details.show()
+  end, {})
 
   -- job helpers
   command("GitlabJobList", jobs.list)
-  command("GitlabJobRetry", jobs.retry, {
-    nargs = "?",
-  })
-  command("GitlabJobLogs", jobs.logs, {
-    nargs = "?",
-  })
-  command("GitlabJobDetails", function(opts)
-    job_details.show({
-      job_id = opts.args,
-    })
-  end, {
-    nargs = "?",
-  })
-  command("GitlabJobArtifacts", function(opts)
-    artifacts.download({
-      job_id = opts.args,
-    })
-  end, {
-    nargs = 1,
-  })
+  command("GitlabJobRetry", function()
+    jobs.retry()
+  end, {})
+  command("GitlabJobLogs", function()
+    jobs.logs()
+  end, {})
+  command("GitlabJobDetails", function()
+    job_details.show()
+  end, {})
+  command("GitlabJobArtifacts", artifacts.pick_and_download, {})
 end
 
 return M
