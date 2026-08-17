@@ -14,6 +14,39 @@ local MAX_DYNAMIC_FIELDS = 7
 local MAX_VARIABLES = 7 -- UI layout limit, not a GitLab restriction
 local HINTS_SIZE = 4
 
+-- merge_variables builds the final variable list for the pipeline trigger.
+-- Project variables go first; manual variables override matching keys.
+-- The result contains no duplicate keys.
+local function merge_variables(project_vars, manual_vars)
+  local seen = {}
+  local result = {}
+
+  for _, pv in ipairs(project_vars) do
+    if pv.key and pv.key ~= "" and not seen[pv.key] then
+      seen[pv.key] = true
+      table.insert(result, { key = pv.key, value = pv.value })
+    end
+  end
+
+  for _, v in ipairs(manual_vars) do
+    if v.key and v.key ~= "" then
+      if seen[v.key] then
+        for i, r in ipairs(result) do
+          if r.key == v.key then
+            result[i] = { key = v.key, value = v.value }
+            break
+          end
+        end
+      else
+        seen[v.key] = true
+        table.insert(result, { key = v.key, value = v.value })
+      end
+    end
+  end
+
+  return result
+end
+
 local function make_input(label, default, on_change)
   return Input({
     border = {
@@ -45,6 +78,46 @@ local function field_label(field)
   end
 
   return label
+end
+
+-- normalize_project_vars filters raw API variables to those with a non-empty
+-- description and applies edited-value preservation: a value the user already
+-- typed overrides the freshly fetched API value.
+-- Full variable metadata from the API is preserved on each entry.
+local function normalize_project_vars(raw_vars, existing)
+  existing = existing or {}
+  local result = {}
+  for _, v in ipairs(raw_vars or {}) do
+    if v.description and v.description ~= "" then
+      local entry = vim.tbl_extend("force", {}, v)
+      entry.value = (existing[v.key] ~= nil and existing[v.key]) or (v.value or "")
+      table.insert(result, entry)
+    end
+  end
+  return result
+end
+
+local function fetch_project_vars(state)
+  if state.project == "" then
+    return
+  end
+
+  local vars, _ = api.variables({
+    project = state.project,
+    cwd = state.root or vim.fn.getcwd(),
+  })
+
+  -- Only carry forward edited values when refreshing the same project.
+  -- A project change discards previous edits so stale values do not leak.
+  local existing = {}
+  if state.project_vars_project == state.project then
+    for _, pv in ipairs(state.project_vars) do
+      existing[pv.key] = pv.value
+    end
+  end
+
+  state.project_vars = normalize_project_vars(vars, existing)
+  state.project_vars_project = state.project
 end
 
 local function fetch_inputs(state)
@@ -102,6 +175,16 @@ local function build_and_mount(state, on_run, on_refresh, on_pick_ref, on_add_va
     table.insert(field_inputs, input)
   end
 
+  local proj_var_inputs = {}
+  for _, pv in ipairs(state.project_vars) do
+    local p = pv
+    local label = p.key .. " — " .. p.description
+    local input = make_input(label, p.value, function(v)
+      p.value = v
+    end)
+    table.insert(proj_var_inputs, input)
+  end
+
   local var_inputs = {}
   for _, var in ipairs(state.variables) do
     local v = var
@@ -126,8 +209,9 @@ local function build_and_mount(state, on_run, on_refresh, on_pick_ref, on_add_va
   })
 
   local n_dynamic = #field_inputs
+  local n_proj_vars = #proj_var_inputs
   local n_vars = #var_inputs
-  local height = (2 + n_dynamic + n_vars) * 3 + HINTS_SIZE
+  local height = (2 + n_dynamic + n_proj_vars + n_vars) * 3 + HINTS_SIZE
 
   local boxes = {
     Layout.Box(project_input, { size = 3 }),
@@ -135,6 +219,9 @@ local function build_and_mount(state, on_run, on_refresh, on_pick_ref, on_add_va
   }
   for _, fi in ipairs(field_inputs) do
     table.insert(boxes, Layout.Box(fi, { size = 3 }))
+  end
+  for _, pvi in ipairs(proj_var_inputs) do
+    table.insert(boxes, Layout.Box(pvi, { size = 3 }))
   end
   for _, vi in ipairs(var_inputs) do
     table.insert(boxes, Layout.Box(vi, { size = 3 }))
@@ -160,6 +247,9 @@ local function build_and_mount(state, on_run, on_refresh, on_pick_ref, on_add_va
   local tab_order = { project_input, ref_input }
   for _, fi in ipairs(field_inputs) do
     table.insert(tab_order, fi)
+  end
+  for _, pvi in ipairs(proj_var_inputs) do
+    table.insert(tab_order, pvi)
   end
   for _, vi in ipairs(var_inputs) do
     table.insert(tab_order, vi)
@@ -209,6 +299,8 @@ function M.open()
     ref = ctx and ctx.ref or "",
     root = ctx and ctx.root or nil,
     fields = {},
+    project_vars = {},
+    project_vars_project = "",
     variables = {},
   }
 
@@ -248,7 +340,7 @@ function M.open()
       project = state.project,
       ref = state.ref,
       inputs = inputs,
-      variables = state.variables,
+      variables = merge_variables(state.project_vars, state.variables),
       cwd = state.root or vim.fn.getcwd(),
     })
 
@@ -334,6 +426,7 @@ function M.open()
 
     notification.info("Fetching pipeline inputs for " .. state.project .. "...")
     fetch_inputs(state)
+    fetch_project_vars(state)
     build()
 
     if #state.fields > 0 then
@@ -344,11 +437,16 @@ function M.open()
   end
 
   fetch_inputs(state)
+  fetch_project_vars(state)
   build()
 
   if not ctx then
     notification.warn(ctx_err or "Could not detect project context — enter project and ref manually")
   end
 end
+
+M.normalize_project_vars = normalize_project_vars
+M.fetch_project_vars = fetch_project_vars
+M.merge_variables = merge_variables
 
 return M

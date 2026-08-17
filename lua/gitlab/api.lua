@@ -185,6 +185,36 @@ local function parse_spec_inputs(content)
   return inputs
 end
 
+function M.latest_pipeline_async(opts, callback)
+  opts = opts or {}
+
+  local ref = opts.ref
+  local query = "per_page=1"
+
+  if ref and ref ~= "" then
+    query = query .. "&ref=" .. ref
+  end
+
+  glab.run_json_async({ "api", project_prefix(opts) .. "/pipelines?" .. query }, {
+    cwd = opts.cwd,
+  }, function(pipelines, err)
+    if err then
+      callback(nil, err)
+      return
+    end
+    if not pipelines or #pipelines == 0 then
+      callback(nil, "No pipeline found")
+      return
+    end
+    callback(pipelines[1], nil)
+  end)
+end
+
+function M.variables(opts)
+  opts = opts or {}
+  return M.get(project_prefix(opts) .. "/variables?per_page=100", { cwd = opts.cwd })
+end
+
 function M.branches(opts)
   opts = opts or {}
 

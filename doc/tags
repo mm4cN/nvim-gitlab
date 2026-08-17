@@ -5,4 +5,5 @@ gitlab-jobs	gitlab.txt	/*gitlab-jobs*
 gitlab-pickers	gitlab.txt	/*gitlab-pickers*
 gitlab-pipelines	gitlab.txt	/*gitlab-pipelines*
 gitlab-requirements	gitlab.txt	/*gitlab-requirements*
+gitlab-statusline	gitlab.txt	/*gitlab-statusline*
 gitlab-views	gitlab.txt	/*gitlab-views*

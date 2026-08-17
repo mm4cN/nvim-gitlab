@@ -111,6 +111,10 @@ function M.run_pipeline(opts)
   return M.run(args, { cwd = opts.cwd })
 end
 
+function M.run_json_async(args, opts, callback)
+  process.run_json_async(cmd(args), opts, callback)
+end
+
 function M.auth_status(host, opts)
   opts = opts or {}
 

@@ -190,6 +190,38 @@ describe("api.branches", function()
   end)
 end)
 
+describe("api.variables", function()
+  it("uses encoded explicit project in path with per_page=100", function()
+    local path = capture_path_json(function()
+      api.variables({ project = "ns/proj" })
+    end)
+    assert.eq(path, "projects/ns%2Fproj/variables?per_page=100")
+  end)
+
+  it("uses :id when project is absent", function()
+    local path = capture_path_json(function()
+      api.variables({})
+    end)
+    assert.eq(path, "projects/:id/variables?per_page=100")
+  end)
+
+  it("returns raw API data without domain-level filtering", function()
+    local result
+    with_mock(glab, "run_json", function()
+      return {
+        { key = "A", value = "1", description = "has description" },
+        { key = "B", value = "2", description = "" },
+        { key = "C", value = "3" },
+      }, nil
+    end, function()
+      result, _ = api.variables({ project = "ns/proj" })
+    end)
+    assert.eq(#result, 3)
+    assert.eq(result[2].key, "B")
+    assert.eq(result[3].key, "C")
+  end)
+end)
+
 describe("nested namespace encoding", function()
   it("encodes every slash in a multi-level namespace", function()
     local path = capture_path_json(function()

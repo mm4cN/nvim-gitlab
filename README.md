@@ -150,6 +150,12 @@ With Telescope enabled, pickers provide additional features:
 - View history navigation (`b`)
 - Context-aware actions
 
+### Statusline API
+
+- Lightweight API for exposing pipeline status to statuslines
+- Current-branch pipeline status with caching
+- Native statusline and lualine integration examples
+
 ### Health Checks
 
 - GitLab token validation
@@ -207,6 +213,46 @@ Refreshable pipeline and job views support:
 - `b` Navigate back
 - `q` Close view
 
+## Statusline Integration
+
+The plugin provides a lightweight API for displaying current-branch pipeline status in your statusline.
+
+### Usage
+
+```lua
+require("gitlab.statusline").get()
+```
+
+Returns a table with pipeline status information:
+
+- `status` — Raw pipeline status string (success, failed, running, pending, etc.)
+- `icon` — Single Unicode character representing the status
+- `text` — Ready-to-use formatted string: `icon .. " " .. status`
+- `pipeline_id` — Numeric pipeline ID
+
+Returns an empty table `{}` when no pipeline is found or on error.
+
+### Native Statusline Example
+
+```lua
+vim.o.statusline = "%{%v:lua.require('gitlab.statusline').get().text or ''%}"
+```
+
+### Lualine Example
+
+```lua
+require("lualine").setup({
+  sections = {
+    lualine_x = {
+      function()
+        return require("gitlab.statusline").get().text or ""
+      end,
+    },
+  },
+})
+```
+
+Results are cached for 60 seconds per project+branch pair.
 
 ## Development
 

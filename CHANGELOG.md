@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-18
+
+### Added
+
+- **Statusline API** — lightweight API for exposing current-branch pipeline status to statusline plugins. `require("gitlab.statusline").get()` returns a table with `status`, `icon`, `text`, and `pipeline_id` fields. Results are cached for 60 seconds per project+branch pair. Includes integration examples for native Neovim statusline and lualine.
+- **Project CI/CD variables** — `:GitlabPipelineRunProject` now fetches and displays project-level CI/CD variables from GitLab. Only variables with a non-empty description are shown. Values are pre-filled from the API and can be edited before running. Project variables and user-defined pipeline variables are merged when triggering the pipeline; manual variables override matching project variable keys.
+
+### Changed
+
+- Project variables and pipeline variables (`:GitlabPipelineRunProject` runner) are now separate concepts. Project variables come from the GitLab API; pipeline variables are user-defined KEY=VALUE pairs. Both are passed to `glab ci run` as `--variable` arguments.
+
 ## [0.8.0] - 2026-08-16
 
 ### Added

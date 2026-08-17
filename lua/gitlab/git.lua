@@ -87,4 +87,53 @@ function M.remote_host()
   return host, nil
 end
 
+function M.root_async(callback)
+  process.run_async({ "git", "rev-parse", "--show-toplevel" }, {}, function(output, err)
+    if err then
+      callback(nil, "Not inside a git repository")
+    else
+      callback(output, nil)
+    end
+  end)
+end
+
+function M.remote_url_async(callback)
+  process.run_async({ "git", "remote", "get-url", "origin" }, {}, function(output, err)
+    if err then
+      callback(nil, "Cannot detect origin remote")
+    else
+      callback(output, nil)
+    end
+  end)
+end
+
+function M.remote_project_async(callback)
+  M.remote_url_async(function(remote, err)
+    if err then
+      callback(nil, err)
+      return
+    end
+    local project = remote:match("^git@[^:]+:(.+)$")
+        or remote:match("^https?://[^/]+/(.+)$")
+        or remote:match("^ssh://git@[^/]+[:/](.+)$")
+    if not project or project == "" then
+      callback(nil, "Cannot extract project path from remote: " .. remote)
+      return
+    end
+    callback(project:gsub("%.git$", ""), nil)
+  end)
+end
+
+function M.branch_async(callback)
+  process.run_async({ "git", "branch", "--show-current" }, {}, function(output, err)
+    if err then
+      callback(nil, "Cannot detect current branch")
+    elseif output == "" then
+      callback(nil, "Detached HEAD is not supported yet")
+    else
+      callback(output, nil)
+    end
+  end)
+end
+
 return M

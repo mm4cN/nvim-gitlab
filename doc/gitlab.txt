@@ -49,6 +49,10 @@ Pipelines:
             Project         GitLab project in namespace/project format.
             Ref / Branch    Branch or ref to run the pipeline on.
             Inputs          Discovered spec:inputs fields (experimental).
+            Project Vars    Described project CI/CD variables fetched from
+                            GitLab. Only variables with a non-empty description
+                            are shown. Values are pre-filled from the API and
+                            can be edited before running.
             Variables       User-defined pipeline variables (KEY=VALUE).
 
         Runner keybindings:
@@ -253,6 +257,56 @@ The 'b' key returns to the previous view.
 
 Most interactive views display action hints at the top of the buffer.
 
+==============================================================================
+STATUSLINE                                          *gitlab-statusline*
+
+A lightweight API exposes current-branch pipeline status for use in any
+statusline plugin or native Neovim statusline.
+
+Public function:
+
+    require("gitlab.statusline").get()
+
+Returns a table with the following fields when a pipeline is found:
+
+    status        Raw pipeline status string from GitLab.
+    icon          Single Unicode character from the icon map.
+    text          Ready-to-use string: icon .. " " .. status.
+    pipeline_id   Numeric pipeline ID.
+
+Returns an empty table ({}) when there is no repository, no pipeline for
+the current branch, or when any error occurs. Failures are silent.
+
+Recognised status values and their icons:
+
+    success   ✓
+    failed    ✗
+    running   ●
+    pending   ○
+    canceled  ⊘
+    skipped   ↷
+    manual    ◆
+    created   ◇
+
+Results are cached for 60 seconds per project+branch pair. The cache is
+keyed by project and ref, so switching branches fetches a fresh result.
+
+Native Neovim statusline example:
+>
+    vim.o.statusline = "%{%v:lua.require('gitlab.statusline').get().text or ''%}"
+<
+lualine integration example:
+>
+    require("lualine").setup({
+      sections = {
+        lualine_x = {
+          function()
+            return require("gitlab.statusline").get().text or ""
+          end,
+        },
+      },
+    })
+<
 ==============================================================================
 HEALTH CHECKS                                         *gitlab-health*
 
