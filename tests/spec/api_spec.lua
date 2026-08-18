@@ -8,7 +8,7 @@ local glab = require("gitlab.glab")
 local api = require("gitlab.api")
 
 -- Most API functions reach glab.run_json via M.request; the path is args[2].
--- pipeline_inputs reaches glab.run directly; the path is still args[2].
+-- pipeline_inputs also uses M.get (→ glab.run_json) against the ci/lint endpoint.
 -- Path is captured before any post-processing, so the mock return value only
 -- needs to satisfy the function's minimum requirements to avoid an early error.
 
@@ -153,18 +153,42 @@ describe("api.run_pipeline", function()
 end)
 
 describe("api.pipeline_inputs", function()
-  it("uses encoded explicit project in path", function()
-    local path = capture_path_run(function()
+  -- pipeline_inputs calls glab.run for the raw CI file (primary) and
+  -- glab.run_json for ci/lint merged_yaml (secondary). Both paths are tested.
+  local function capture_both_paths(fn)
+    local raw_path, lint_path
+    with_mock(glab, "run", function(args)
+      raw_path = args[2]
+      return "# fixture", nil
+    end, function()
+      with_mock(glab, "run_json", function(args)
+        lint_path = args[2]
+        return { merged_yaml = "# fixture" }, nil
+      end, fn)
+    end)
+    return raw_path, lint_path
+  end
+
+  it("fetches raw CI file with encoded project and ref", function()
+    local raw_path = capture_both_paths(function()
       api.pipeline_inputs({ project = "ns/proj", ref = "main" })
     end)
-    assert.eq(path, "projects/ns%2Fproj/repository/files/.gitlab-ci.yml/raw?ref=main")
+    assert.eq(raw_path, "projects/ns%2Fproj/repository/files/.gitlab-ci.yml/raw?ref=main")
+  end)
+
+  it("fetches ci/lint with encoded project and content_ref", function()
+    local _, lint_path = capture_both_paths(function()
+      api.pipeline_inputs({ project = "ns/proj", ref = "main" })
+    end)
+    assert.eq(lint_path, "projects/ns%2Fproj/ci/lint?content_ref=main")
   end)
 
   it("uses :id when project is absent", function()
-    local path = capture_path_run(function()
+    local raw_path, lint_path = capture_both_paths(function()
       api.pipeline_inputs({ ref = "main" })
     end)
-    assert.eq(path, "projects/:id/repository/files/.gitlab-ci.yml/raw?ref=main")
+    assert.eq(raw_path, "projects/:id/repository/files/.gitlab-ci.yml/raw?ref=main")
+    assert.eq(lint_path, "projects/:id/ci/lint?content_ref=main")
   end)
 end)
 

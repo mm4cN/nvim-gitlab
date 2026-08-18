@@ -245,6 +245,61 @@ function M.branches(opts)
   return names, nil
 end
 
+-- parse_legacy_variables extracts top-level variables: entries that carry both
+-- value: and description: sub-keys (legacy pipeline-variable convention).
+-- Inline assignments (KEY: value) and entries without a description are excluded.
+-- Only 2-space indentation is supported; tabs are not.
+local function parse_legacy_variables(content)
+  local vars = {}
+  local lines = vim.split(content, "\n", { plain = true })
+
+  local in_variables = false
+  local current_name = nil
+  local current_value = nil
+  local current_description = nil
+
+  local function commit()
+    if current_name and current_value ~= nil and current_description and current_description ~= "" then
+      table.insert(vars, { key = current_name, value = current_value, description = current_description })
+    end
+    current_name = nil
+    current_value = nil
+    current_description = nil
+  end
+
+  for _, line in ipairs(lines) do
+    if not (line:match("^%s*#") or line:match("^%s*$")) then
+      local indent = #line:match("^(%s*)")
+      local trimmed = vim.trim(line)
+
+      if indent == 0 then
+        commit()
+        in_variables = trimmed == "variables:"
+      elseif in_variables and indent == 2 then
+        commit()
+        -- block-form only: trailing colon with no inline value
+        local name = trimmed:match("^([%w_%-]+)%s*:$")
+        if name then
+          current_name = name
+        end
+      elseif in_variables and current_name and indent == 4 then
+        local key, val = trimmed:match("^([%w_%-]+)%s*:%s*(.-)%s*$")
+        if key and val then
+          val = val:gsub('^["\']', ""):gsub('["\']$', "")
+          if key == "value" then
+            current_value = val
+          elseif key == "description" then
+            current_description = val
+          end
+        end
+      end
+    end
+  end
+  commit()
+
+  return vars
+end
+
 function M.pipeline_inputs(opts)
   opts = opts or {}
 
@@ -252,15 +307,21 @@ function M.pipeline_inputs(opts)
     return nil, "ref is required"
   end
 
-  local path = project_prefix(opts) .. "/repository/files/.gitlab-ci.yml/raw?ref=" .. vim.uri_encode(opts.ref)
-
-  local content, err = glab.run({ "api", path }, { cwd = opts.cwd })
+  -- Raw file is required for spec:inputs — ci/lint strips the spec: block from merged_yaml.
+  local raw_path = project_prefix(opts) .. "/repository/files/.gitlab-ci.yml/raw?ref=" .. vim.uri_encode(opts.ref)
+  local content, err = glab.run({ "api", raw_path }, { cwd = opts.cwd })
 
   if not content or content == "" then
     return nil, err or "CI file not found"
   end
 
-  return parse_spec_inputs(content), nil
+  -- ci/lint merged_yaml expands include: directives for legacy described variables.
+  -- Degrade gracefully if this secondary fetch fails.
+  local lint_path = project_prefix(opts) .. "/ci/lint?content_ref=" .. vim.uri_encode(opts.ref)
+  local lint_result, _ = M.get(lint_path, { cwd = opts.cwd })
+  local merged = (lint_result and lint_result.merged_yaml ~= "" and lint_result.merged_yaml) or content
+
+  return parse_spec_inputs(content), nil, parse_legacy_variables(merged)
 end
 
 function M.run_pipeline(opts)

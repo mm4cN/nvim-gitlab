@@ -8,14 +8,18 @@ local glab = require("gitlab.glab")
 local api = require("gitlab.api")
 
 -- parse_spec_inputs is a local function tested through api.pipeline_inputs.
--- glab.run is mocked to return fixture YAML; no network or file access occurs.
-
+-- pipeline_inputs calls glab.run for the raw CI file (spec:inputs source) and
+-- glab.run_json for ci/lint merged_yaml (legacy variables source).
 local function parse_yaml(content)
   local inputs, err
   with_mock(glab, "run", function()
     return content, nil
   end, function()
-    inputs, err = api.pipeline_inputs({ ref = "main" })
+    with_mock(glab, "run_json", function()
+      return { merged_yaml = content }, nil
+    end, function()
+      inputs, err = api.pipeline_inputs({ project = "ns/proj", ref = "main" })
+    end)
   end)
   return inputs, err
 end

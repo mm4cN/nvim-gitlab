@@ -7,6 +7,7 @@ require("tests.spec.spec_inputs_spec")
 require("tests.spec.pagination_spec")
 require("tests.spec.commands_spec")
 require("tests.spec.project_vars_spec")
+require("tests.spec.legacy_vars_spec")
 require("tests.spec.statusline_spec")
 
 require("tests.runner").report()
