@@ -7,9 +7,9 @@ local with_mock = runner.with_mock
 local api = require("gitlab.api")
 local pipeline_runner = require("gitlab.ci.pipeline_runner")
 
-local normalize = pipeline_runner.normalize_project_vars
-local fetch    = pipeline_runner.fetch_project_vars
-local merge    = pipeline_runner.merge_variables
+local normalize = pipeline_runner._normalize_project_vars
+local fetch    = pipeline_runner._fetch_project_vars
+local merge    = pipeline_runner._merge_variables
 
 -- ──────────────────────────────────────────────────────────────────────────────
 -- normalize_project_vars — filtering and metadata preservation

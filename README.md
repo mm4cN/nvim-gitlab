@@ -31,8 +31,12 @@ Merge Requests, Issues, and project management features are currently out of sco
 
 - Neovim 0.12+
 - git
-- glab
-- [MunifTanjim/nui.nvim](https://github.com/MunifTanjim/nui.nvim) (required for `:GitlabPipelineRunProject`)
+- [glab](https://gitlab.com/gitlab-org/cli) (required)
+- [MunifTanjim/nui.nvim](https://github.com/MunifTanjim/nui.nvim) (required)
+- [nvim-telescope/telescope.nvim](https://github.com/nvim-telescope/telescope.nvim) (optional; used when `picker = "telescope"`)
+
+`GITLAB_TOKEN` is optional when `glab` is already authenticated. It is required
+only when using `:GitlabAuth`. `yq` is not required.
 
 ## Installation
 
@@ -87,7 +91,6 @@ require("gitlab").setup()
 ```lua
 require("gitlab").setup({
     glab_binary = "glab",
-    default_branch = "main",
     ci_file = ".gitlab-ci.yml",
 
     picker = "vim_ui",      -- default picker backend
@@ -158,8 +161,8 @@ With Telescope enabled, pickers provide additional features:
 
 ### Health Checks
 
-- GitLab token validation
-- glab availability checks
+- Required and optional dependency diagnostics
+- glab authentication and GitLab API validation
 - CI configuration validation
 
 ## Commands
@@ -182,7 +185,6 @@ With Telescope enabled, pickers provide additional features:
 
 ```vim
 :GitlabPipelineRun
-:GitlabPipelineRunProject   " cross-project runner with ref picker and pipeline variables
 :GitlabPipelineList
 :GitlabPipelineStatus
 :GitlabPipelineDetails
@@ -198,6 +200,14 @@ With Telescope enabled, pickers provide additional features:
 :GitlabJobArtifacts
 ```
 
+The pipeline runner discovers `spec:inputs` from the root `.gitlab-ci.yml` and
+legacy described variables from GitLab's merged CI YAML. Discovery intentionally
+supports a limited YAML subset: 2-space indentation, plain or simply quoted
+scalar values, and block-style `options` lists. Anchors and aliases, multiline
+scalars, inline collections, tabs, and escaped quoted scalars are not decoded.
+Unsupported scalar values are ignored rather than interpreted. This keeps YAML
+discovery dependency-free; `yq` is not required.
+
 ### Interactive Views
 
 Refreshable pipeline and job views support:
@@ -212,6 +222,16 @@ Refreshable pipeline and job views support:
 - `[` Previous page (pipeline list)
 - `b` Navigate back
 - `q` Close view
+
+## Public Lua API
+
+The supported Lua API is:
+
+- `require("gitlab").setup(opts)` — configure and initialize the plugin.
+- `require("gitlab.statusline").get()` — return cached statusline data without blocking.
+- `require("gitlab.statusline").clear_cache()` — clear statusline context and pipeline caches.
+
+Other `gitlab.*` modules are internal implementation details and may change.
 
 ## Statusline Integration
 
@@ -271,4 +291,3 @@ Tests run headlessly via Neovim and require no GitLab credentials or network acc
 - Artifact browser
 - Pipeline filtering
 - Pipeline search
-

@@ -121,8 +121,23 @@ end
 
 -- parse_spec_inputs extracts spec:inputs from raw .gitlab-ci.yml content.
 -- EXPERIMENTAL: GitLab has no REST endpoint for spec:inputs discovery (issue #519944).
--- Supported subset only: 2-space indented YAML, scalar defaults, block-style options lists.
--- Not supported: include: directives, YAML anchors/aliases, block scalars, tabs, array defaults.
+-- Supported subset only: 2-space indentation, plain or simply quoted scalars,
+-- and block-style options lists. Anchors/aliases, block scalars, inline
+-- collections, tabs, and escaped quoted scalars are intentionally not decoded.
+local function simple_scalar(value)
+  local first = value:sub(1, 1)
+  local last = value:sub(-1)
+  if first == "|" or first == ">" or first == "&" or first == "*"
+      or first == "[" or first == "{" then
+    return nil
+  end
+  if ((first == '"' and last == '"') or (first == "'" and last == "'"))
+      and value:find("\\", 1, true) then
+    return nil
+  end
+  return value:gsub('^["\']', ""):gsub('["\']$', "")
+end
+
 local function parse_spec_inputs(content)
   local inputs = {}
   local lines = vim.split(content, "\n", { plain = true })
@@ -162,21 +177,23 @@ local function parse_spec_inputs(content)
           current.options = {}
         elseif key then
           in_options = false
-          val = val:gsub('^["\']', ""):gsub('["\']$', "")
-          if key == "default" then
+          val = simple_scalar(val)
+          if key == "default" and val ~= nil then
             current.default = val
             current.value = val
-          elseif key == "description" then
+          elseif key == "description" and val ~= nil then
             current.description = val
-          elseif key == "type" then
+          elseif key == "type" and val ~= nil then
             current.type = val
           end
         end
       elseif in_inputs and current and in_options and indent == 8 then
         local item = trimmed:match("^%-%s*(.+)$")
         if item then
-          item = item:gsub('^["\']', ""):gsub('["\']$', "")
-          table.insert(current.options, item)
+          item = simple_scalar(item)
+          if item ~= nil then
+            table.insert(current.options, item)
+          end
         end
       end
     end
@@ -248,7 +265,8 @@ end
 -- parse_legacy_variables extracts top-level variables: entries that carry both
 -- value: and description: sub-keys (legacy pipeline-variable convention).
 -- Inline assignments (KEY: value) and entries without a description are excluded.
--- Only 2-space indentation is supported; tabs are not.
+-- Uses the same deliberately limited scalar subset as spec:inputs. Only
+-- 2-space indentation is supported; tabs and general YAML constructs are not.
 local function parse_legacy_variables(content)
   local vars = {}
   local lines = vim.split(content, "\n", { plain = true })
@@ -285,7 +303,7 @@ local function parse_legacy_variables(content)
       elseif in_variables and current_name and indent == 4 then
         local key, val = trimmed:match("^([%w_%-]+)%s*:%s*(.-)%s*$")
         if key and val then
-          val = val:gsub('^["\']', ""):gsub('["\']$', "")
+          val = simple_scalar(val)
           if key == "value" then
             current_value = val
           elseif key == "description" then
@@ -322,22 +340,6 @@ function M.pipeline_inputs(opts)
   local merged = (lint_result and lint_result.merged_yaml ~= "" and lint_result.merged_yaml) or content
 
   return parse_spec_inputs(content), nil, parse_legacy_variables(merged)
-end
-
-function M.run_pipeline(opts)
-  opts = opts or {}
-
-  if not opts.ref or opts.ref == "" then
-    return nil, "ref is required"
-  end
-
-  return M.request(project_prefix(opts) .. "/pipeline", {
-    cwd = opts.cwd,
-    method = "POST",
-    fields = {
-      ref = opts.ref,
-    },
-  })
 end
 
 return M

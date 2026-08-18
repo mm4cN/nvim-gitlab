@@ -1,8 +1,6 @@
 local api = require("gitlab.api")
 local buffer = require("gitlab.ui.buffer")
-local config = require("gitlab.config")
 local git = require("gitlab.git")
-local confirm = require("gitlab.ui.confirm")
 local notification = require("gitlab.ui.notification")
 
 local M = {}
@@ -69,60 +67,6 @@ function M.play_job(job_id)
   end
 
   notification.info("Job #" .. tostring(job_id) .. " play requested")
-  buffer.refresh()
-end
-
-function M.retry_pipeline_jobs(pipeline_id)
-  if not pipeline_id or pipeline_id == "" then
-    notification.error("pipeline_id is required")
-    return
-  end
-
-  local root = repo_root()
-  if not root then
-    return
-  end
-
-  notification.info("Retrying failed jobs for pipeline #" .. tostring(pipeline_id) .. "...")
-
-  local jobs, jobs_err = api.pipeline_jobs(pipeline_id, {
-    cwd = root,
-  })
-
-  if not jobs then
-    notification.error(jobs_err)
-    return
-  end
-
-  local retried = 0
-  local failed = 0
-
-  for _, job in ipairs(jobs) do
-    if job.status == "failed" or job.status == "canceled" then
-      local _, err = api.request("projects/:id/jobs/" .. tostring(job.id) .. "/retry", {
-        cwd = root,
-        method = "POST",
-      })
-
-      if err then
-        failed = failed + 1
-      else
-        retried = retried + 1
-      end
-    end
-  end
-
-  if retried == 0 and failed == 0 then
-    notification.info("No failed or canceled jobs to retry")
-    return
-  end
-
-  if failed > 0 then
-    notification.error("Retried " .. retried .. " job(s), failed to retry " .. failed)
-    return
-  end
-
-  notification.info("Retried " .. retried .. " job(s)")
   buffer.refresh()
 end
 

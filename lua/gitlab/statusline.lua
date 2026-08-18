@@ -127,6 +127,5 @@ function M._expire_context()
 end
 
 M._cache   = _cache
-M._pending = _pending
 
 return M

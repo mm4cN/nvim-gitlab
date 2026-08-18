@@ -24,28 +24,44 @@ local artifacts = require("gitlab.ci.artifacts")
 -- ---------------------------------------------------------------------------
 
 describe("public commands are argument-less", function()
-  local function nargs(name)
-    return registered[name] and registered[name].nargs
-  end
+  local commands = {
+    "GitlabAuth",
+    "GitlabHealth",
+    "GitlabCiValidate",
+    "GitlabPipelineRun",
+    "GitlabPipelineList",
+    "GitlabPipelineStatus",
+    "GitlabPipelineDetails",
+    "GitlabJobList",
+    "GitlabJobRetry",
+    "GitlabJobLogs",
+    "GitlabJobDetails",
+    "GitlabJobArtifacts",
+  }
 
-  it("GitlabPipelineDetails", function()
-    assert.eq(nargs("GitlabPipelineDetails"), "0")
+  it("registers the intentional command set without arguments", function()
+    local count = 0
+    for name, command in pairs(registered) do
+      if name:match("^Gitlab") then
+        count = count + 1
+        assert.eq(command.nargs, "0")
+      end
+    end
+    assert.eq(count, #commands)
+    for _, name in ipairs(commands) do
+      assert.eq(registered[name] ~= nil, true)
+    end
+  end)
+end)
+
+describe("pipeline runner command", function()
+  it("registers the interactive runner as GitlabPipelineRun", function()
+    assert.eq(registered.GitlabPipelineRun ~= nil, true)
+    assert.eq(registered.GitlabPipelineRun.nargs, "0")
   end)
 
-  it("GitlabJobDetails", function()
-    assert.eq(nargs("GitlabJobDetails"), "0")
-  end)
-
-  it("GitlabJobRetry", function()
-    assert.eq(nargs("GitlabJobRetry"), "0")
-  end)
-
-  it("GitlabJobLogs", function()
-    assert.eq(nargs("GitlabJobLogs"), "0")
-  end)
-
-  it("GitlabJobArtifacts", function()
-    assert.eq(nargs("GitlabJobArtifacts"), "0")
+  it("does not register GitlabPipelineRunProject", function()
+    assert.eq(registered.GitlabPipelineRunProject, nil)
   end)
 end)
 

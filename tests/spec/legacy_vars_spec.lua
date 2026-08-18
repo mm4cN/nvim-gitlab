@@ -149,6 +149,27 @@ variables:
     assert.eq(#vars, 1)
     assert.eq(vars[1].key, "VISIBLE")
   end)
+
+  it("excludes a variable with a block scalar description", function()
+    local vars = parse_yaml_vars([[
+variables:
+  ENV:
+    value: staging
+    description: |
+      Target environment
+]])
+    assert.eq(#vars, 0)
+  end)
+
+  it("excludes a variable with an alias value", function()
+    local vars = parse_yaml_vars([[
+variables:
+  ENV:
+    value: *default_environment
+    description: Target environment
+]])
+    assert.eq(#vars, 0)
+  end)
 end)
 
 -- ──────────────────────────────────────────────────────────────────────────────
@@ -201,7 +222,7 @@ end)
 -- fetch_inputs — yaml_vars state management
 -- ──────────────────────────────────────────────────────────────────────────────
 
-local fetch_inputs = pipeline_runner.fetch_inputs
+local fetch_inputs = pipeline_runner._fetch_inputs
 
 describe("fetch_inputs — yaml_vars scoping", function()
   it("populates state.yaml_vars from pipeline_inputs third return value", function()
@@ -381,7 +402,7 @@ describe("fetch_inputs — ref switching populates spec:inputs immediately", fun
   end)
 end)
 
-local merge = pipeline_runner.merge_variables
+local merge = pipeline_runner._merge_variables
 
 describe("merge_variables — three-tier priority", function()
   it("yaml_var overrides api_var for the same key", function()

@@ -3,9 +3,12 @@ REQUIREMENTS                                        *gitlab-requirements*
 
 - Neovim 0.12+
 - git
-- glab
-- GitLab Personal Access Token
+- glab (required)
+- nui.nvim (required)
 - telescope.nvim (optional, for Telescope picker backend)
+
+GITLAB_TOKEN is optional when glab is already authenticated. It is required
+only by :GitlabAuth. yq is not required.
 
 Authentication is performed through the glab CLI.
 
@@ -17,6 +20,30 @@ Supported remotes:
     git@gitlab.com:group/project.git
     https://gitlab.com/group/project.git
     https://gitlab.example.com/group/project.git
+
+==============================================================================
+CONFIGURATION                                      *gitlab-configuration*
+
+Default configuration:
+>
+    require("gitlab").setup({
+        glab_binary = "glab",
+        gitlab_token_env = "GITLAB_TOKEN",
+        ci_file = ".gitlab-ci.yml",
+        picker = "vim_ui",
+        scratch_height = 15,
+        artifacts_dir = "gitlab-artifacts",
+        extract_artifacts = true,
+    })
+<
+    glab_binary        glab executable name or path.
+    gitlab_token_env   Environment variable containing a GitLab token.
+    ci_file            CI file validated by :GitlabCiValidate.
+    picker             "vim_ui" or "telescope". Unknown or unavailable
+                       backends fall back to vim.ui.
+    scratch_height     Height of scratch-buffer views.
+    artifacts_dir      Artifact download directory, relative to cwd.
+    extract_artifacts  Extract downloaded archives when true.
 
 ==============================================================================
 COMMANDS                                              *gitlab-commands*
@@ -37,10 +64,7 @@ CI:
 Pipelines:
 
     :GitlabPipelineRun
-        Run a new pipeline for the current branch.
-
-    :GitlabPipelineRunProject
-        Open the cross-project pipeline runner. Pre-fills the current
+        Open the pipeline runner. Pre-fills the current
         repository project and branch. Supports editing the target project
         and ref, and running a pipeline for any accessible GitLab project.
 
@@ -66,14 +90,17 @@ Pipelines:
             q / <Esc>       Close the runner.
 
         Pipeline variables are independent from spec:inputs. Variables are
-        passed to glab as --variable KEY=VALUE. Up to 7 variable fields can
+        passed to glab as --variables KEY:VALUE. Up to 7 variable fields can
         be added per run (UI limit).
 
-        Automatic spec:inputs discovery is EXPERIMENTAL. It fetches the
-        root .gitlab-ci.yml via the Repository Files API and parses the
-        spec:inputs block locally. Only simple 2-space indented YAML with
-        scalar defaults is supported. Inputs defined via include:, YAML
-        anchors, block scalars, or array defaults may not be discovered.
+        Automatic YAML discovery is EXPERIMENTAL. spec:inputs are read from
+        the root .gitlab-ci.yml; legacy described variables are read from
+        GitLab's include-expanded merged YAML. The local parser intentionally
+        supports only 2-space indentation, plain or simply quoted scalar
+        values, and block-style options lists. Anchors and aliases, multiline
+        scalars, inline collections, tabs, and escaped quoted scalars are not
+        decoded. Unsupported scalar values are ignored rather than
+        interpreted. This keeps discovery dependency-free; yq is not required.
 
     :GitlabPipelineList
         List recent project pipelines.
@@ -221,15 +248,17 @@ ARTIFACTS                                            *gitlab-artifacts*
 
 Artifacts can be downloaded directly from job views.
 
-Downloaded artifacts are stored in:
+Downloaded artifact archives are stored in:
 
-    {artifacts_dir}/{job_id}
+    {artifacts_dir}/job-{job_id}-artifacts.zip
 
 If extraction is enabled:
 
     extract_artifacts = true
 
-archives are automatically unpacked after download.
+archives are automatically unpacked after download to:
+
+    {artifacts_dir}/job-{job_id}
 
 Artifact views provide:
 
@@ -256,6 +285,22 @@ Navigation hierarchy:
 The 'b' key returns to the previous view.
 
 Most interactive views display action hints at the top of the buffer.
+
+==============================================================================
+LUA API                                               *gitlab-lua-api*
+
+Supported functions:
+
+    require("gitlab").setup(opts)
+        Configure and initialize the plugin.
+
+    require("gitlab.statusline").get()
+        Return cached statusline data without blocking.
+
+    require("gitlab.statusline").clear_cache()
+        Clear statusline context and pipeline caches.
+
+Other gitlab.* modules are internal implementation details and may change.
 
 ==============================================================================
 STATUSLINE                                          *gitlab-statusline*
@@ -326,6 +371,9 @@ Health checks include:
 
 - git availability
 - glab availability
+- required nui.nvim availability
+- configured Telescope picker availability and vim.ui fallback
+- optional token status for :GitlabAuth
 - repository root detection
 - remote URL detection
 - GitLab host detection

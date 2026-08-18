@@ -32,8 +32,7 @@ function M.setup()
   command("GitlabCiValidate", lint.validate, {})
 
   -- pipeline helpers
-  command("GitlabPipelineRun", pipelines.run, {})
-  command("GitlabPipelineRunProject", pipeline_runner.open, {})
+  command("GitlabPipelineRun", pipeline_runner.open, {})
   command("GitlabPipelineList", pipelines.list, {})
   command("GitlabPipelineStatus", pipelines.status, {})
   command("GitlabPipelineDetails", function()

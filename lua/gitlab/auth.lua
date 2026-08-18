@@ -15,16 +15,6 @@ function M.token()
   return token, nil
 end
 
-function M.check()
-  local _, err = M.token()
-
-  if err then
-    return false, err
-  end
-
-  return true, nil
-end
-
 function M.is_gitlab_host(host)
   if not host or host == "" then
     return false

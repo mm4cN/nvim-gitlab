@@ -26,7 +26,19 @@ local function load_backend()
     return require(backends.vim_ui)
   end
 
-  return require(module)
+  local loaded, backend = pcall(require, module)
+  if loaded then
+    return backend
+  end
+
+  notification.warn(
+    "Could not load picker backend "
+      .. tostring(name)
+      .. ", falling back to vim_ui: "
+      .. tostring(backend)
+  )
+
+  return require(backends.vim_ui)
 end
 
 function M.select(items, opts, callback)

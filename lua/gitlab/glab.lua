@@ -15,26 +15,6 @@ function M.run_json(args, opts)
   return process.run_json(cmd(args), opts)
 end
 
-function M.api_json(path, opts)
-  opts = opts or {}
-
-  local args = { "api", path }
-
-  if opts.method then
-    vim.list_extend(args, { "--method", opts.method })
-  end
-
-  if opts.fields then
-    for key, value in pairs(opts.fields) do
-      vim.list_extend(args, { "-f", key .. "=" .. tostring(value) })
-    end
-  end
-
-  return M.run_json(args, {
-    cwd = opts.cwd,
-  })
-end
-
 -- format_input encodes a single pipeline input for glab ci run --input.
 -- GitLab spec:inputs types: string, number, boolean, array.
 -- glab typed syntax: key:value (string), key:int(n), key:float(n), key:bool(v), key:array(a,b).
@@ -80,7 +60,6 @@ end
 -- opts.inputs is a list of { name, value, type } tables corresponding to spec:inputs entries.
 -- opts.variables is a list of { key, value } tables for GitLab pipeline variables.
 -- Inputs and variables are kept separate: inputs map to --input, variables to --variables KEY:VALUE.
--- Distinct from api.run_pipeline which calls the REST API and returns pipeline JSON.
 function M.run_pipeline(opts)
   opts = opts or {}
 

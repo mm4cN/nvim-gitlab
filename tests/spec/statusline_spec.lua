@@ -93,23 +93,32 @@ end)
 -- ── Non-blocking invariant ───────────────────────────────────────────────────
 
 describe("statusline.get — non-blocking", function()
-  it("never invokes process.run (sync path) during get()", function()
+  it("never invokes synchronous process, context, or API paths during get()", function()
     setup()
-    local sync_called = false
+    local sync_calls = 0
     with_mock(process, "run", function()
-      sync_called = true
+      sync_calls = sync_calls + 1
       return nil, "sync path must not be reached"
     end, function()
-      -- No context, no pipeline — get() should trigger async refresh via
-      -- from_cwd_async (mocked to do nothing here) and return {}, never
-      -- touching process.run.
-      with_mock(context, "from_cwd_async", function(_cb)
-        -- do not call callback — simulates in-flight refresh
+      with_mock(context, "from_cwd", function()
+        sync_calls = sync_calls + 1
+        return nil, "sync path must not be reached"
       end, function()
-        statusline.get()
+        with_mock(api, "latest_pipeline", function()
+          sync_calls = sync_calls + 1
+          return nil, "sync path must not be reached"
+        end, function()
+          -- No context, no pipeline — get() should trigger async refresh via
+          -- from_cwd_async (mocked to do nothing here) and return immediately.
+          with_mock(context, "from_cwd_async", function(_cb)
+            -- do not call callback — simulates in-flight refresh
+          end, function()
+            statusline.get()
+          end)
+        end)
       end)
     end)
-    assert.eq(sync_called, false)
+    assert.eq(sync_calls, 0)
   end)
 end)
 

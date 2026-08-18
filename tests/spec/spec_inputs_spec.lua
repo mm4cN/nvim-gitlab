@@ -353,8 +353,6 @@ spec:
   end)
 
   it("block scalar description does not corrupt subsequent input parsing", function()
-    -- description: | captures "|" as the description; subsequent indented lines
-    -- are skipped; the next input at indent 4 is still parsed correctly.
     local inputs, err = parse_yaml([[
 spec:
   inputs:
@@ -366,6 +364,34 @@ spec:
     assert.is_nil(err)
     assert.eq(#inputs, 2)
     assert.eq(inputs[1].name, "first")
+    assert.is_nil(inputs[1].description)
     assert.eq(inputs[2].name, "second")
+  end)
+
+  it("does not surface an alias as a default value", function()
+    local inputs, err = parse_yaml([[
+spec:
+  inputs:
+    environment:
+      default: *default_environment
+]])
+    assert.is_nil(err)
+    assert.eq(#inputs, 1)
+    assert.is_nil(inputs[1].default)
+    assert.eq(inputs[1].value, "")
+  end)
+
+  it("does not surface an alias as an option", function()
+    local inputs, err = parse_yaml([[
+spec:
+  inputs:
+    environment:
+      options:
+        - staging
+        - *default_environment
+]])
+    assert.is_nil(err)
+    assert.eq(#inputs[1].options, 1)
+    assert.eq(inputs[1].options[1], "staging")
   end)
 end)

@@ -37,9 +37,29 @@ function M.run()
 
   local glab_ok, glab_result = check_command(config.options.glab_binary)
   table.insert(lines, glab_ok and ok("glab", glab_result) or fail("glab", glab_result))
+  if not glab_ok then
+    table.insert(lines, "  Install glab and ensure it is available on PATH")
+  end
+
+  if pcall(require, "nui.input") then
+    table.insert(lines, ok("nui.nvim", "required"))
+  else
+    table.insert(lines, fail("nui.nvim", "required dependency not found"))
+    table.insert(lines, "  Install MunifTanjim/nui.nvim")
+  end
+
+  if config.options.picker == "telescope" then
+    if pcall(require, "gitlab.ui.pickers.telescope") then
+      table.insert(lines, ok("Telescope picker", "available"))
+    else
+      table.insert(lines, "! Telescope picker unavailable; using vim.ui fallback")
+      table.insert(lines, "  Install nvim-telescope/telescope.nvim to use picker = \"telescope\"")
+    end
+  end
 
   local token, token_err = auth.token()
-  table.insert(lines, token and ok("token", config.options.gitlab_token_env) or fail("token", token_err))
+  table.insert(lines, token and ok("token", config.options.gitlab_token_env)
+    or "• token: " .. token_err .. " (optional; only required by :GitlabAuth)")
 
   local root, root_err = git.root()
   table.insert(lines, root and ok("git root", root) or fail("git root", root_err))

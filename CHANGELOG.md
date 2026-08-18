@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Include-aware discovery of legacy described CI/CD variables in the interactive pipeline runner.
+- Explicit public Lua API documentation for setup and statusline access.
+- Actionable health diagnostics for required `glab` and `nui.nvim`, optional Telescope, and feature-specific token usage.
+
+### Changed
+
+- `:GitlabPipelineRun` is now the canonical interactive pipeline runner, with project/ref selection, CI discovery, and manual variables.
+- YAML discovery remains dependency-free and now documents its intentionally supported subset.
+- Telescope selection falls back to `vim.ui` when Telescope is configured but unavailable.
+- The public command and configuration surfaces have been audited and stabilized for 1.0.
+
+### Removed
+
+- The redundant simple pipeline runner and its separate project-run command.
+- The unused `default_branch` configuration option.
+
+### Fixed
+
+- Unsupported YAML scalar constructs are ignored instead of being interpreted as literal input or variable values.
+
 ## [0.9.0] - 2026-08-18
 
 ### Added
@@ -16,13 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Project variables and pipeline variables (`:GitlabPipelineRunProject` runner) are now separate concepts. Project variables come from the GitLab API; pipeline variables are user-defined KEY=VALUE pairs. Both are passed to `glab ci run` as `--variable` arguments.
+- Project variables and pipeline variables (`:GitlabPipelineRunProject` runner) are now separate concepts. Project variables come from the GitLab API; pipeline variables are user-defined `KEY=VALUE` pairs. Both are passed to `glab ci run` as `--variables KEY:VALUE` arguments.
 
 ## [0.8.0] - 2026-08-16
 
 ### Added
 
-- **Pipeline variables** — the cross-project runner now supports GitLab pipeline variables independently from `spec:inputs`. Press `a` in normal mode on any runner field to add a variable; enter it as `KEY=VALUE`. Variables are passed to `glab ci run` as `--variable KEY=VALUE`. Up to 7 variables can be added per run (UI limit, not a GitLab restriction).
+- **Pipeline variables** — the cross-project runner now supports GitLab pipeline variables independently from `spec:inputs`. Press `a` in normal mode on any runner field to add a variable; enter it as `KEY=VALUE`. Variables are passed to `glab ci run` as `--variables KEY:VALUE`. Up to 7 variables can be added per run (UI limit, not a GitLab restriction).
 - **Ref picker** — press `<C-r>` on the Ref field in the cross-project runner to pick a branch from the selected project. Branches are fetched from the GitLab API for the currently entered project. Manual ref entry remains available at all times.
 - **Project context** — `project`, `ref`, and local repository root are now resolved together at runner startup. If any field cannot be resolved the runner opens with empty fields and reports the specific error. No partial context is used.
 
@@ -52,4 +74,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - Refreshable views introduced in 0.6 now also cover the job list view correctly after pipeline operations.
-

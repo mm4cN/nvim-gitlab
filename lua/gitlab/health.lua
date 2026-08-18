@@ -32,13 +32,30 @@ function M.check()
     ok(config.options.glab_binary .. " found")
   else
     error(config.options.glab_binary .. " not found")
+    health.info("Install glab and ensure it is available on PATH")
+  end
+
+  if pcall(require, "nui.input") then
+    ok("nui.nvim found (required)")
+  else
+    error("nui.nvim not found (required)")
+    health.info("Install MunifTanjim/nui.nvim")
+  end
+
+  if config.options.picker == "telescope" then
+    if pcall(require, "gitlab.ui.pickers.telescope") then
+      ok("Telescope picker available")
+    else
+      warn("Telescope picker unavailable; using vim.ui fallback")
+      health.info("Install nvim-telescope/telescope.nvim to use picker = \"telescope\"")
+    end
   end
 
   local token, token_err = auth.token()
   if token then
     ok(config.options.gitlab_token_env .. " configured")
   else
-    warn(token_err)
+    health.info(token_err .. " (optional; only required by :GitlabAuth)")
   end
 
   local root, root_err = git.root()

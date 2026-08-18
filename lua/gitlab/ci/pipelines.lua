@@ -29,42 +29,6 @@ local function current_branch()
   return branch
 end
 
-function M.run()
-  local root = repo_root()
-  if not root then
-    return
-  end
-
-  local branch = current_branch()
-  if not branch then
-    return
-  end
-
-  notification.info("Running pipeline on " .. branch .. "...")
-
-  local pipeline, err = api.run_pipeline({
-    cwd = root,
-    ref = branch,
-  })
-
-  if not pipeline then
-    notification.error(err)
-    return
-  end
-
-  local lines = {
-    "Pipeline created",
-    "",
-    format.pipeline(pipeline),
-  }
-
-  buffer.show({
-    title = "GitLab Pipeline Run",
-    filetype = "gitlab",
-    lines = lines,
-  })
-end
-
 function M.list()
   local root = repo_root()
   if not root then

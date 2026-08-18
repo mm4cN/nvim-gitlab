@@ -136,22 +136,6 @@ describe("api.job", function()
   end)
 end)
 
-describe("api.run_pipeline", function()
-  it("uses encoded explicit project in path", function()
-    local path = capture_path_json(function()
-      api.run_pipeline({ project = "ns/proj", ref = "main" })
-    end)
-    assert.eq(path, "projects/ns%2Fproj/pipeline")
-  end)
-
-  it("uses :id when project is absent", function()
-    local path = capture_path_json(function()
-      api.run_pipeline({ ref = "main" })
-    end)
-    assert.eq(path, "projects/:id/pipeline")
-  end)
-end)
-
 describe("api.pipeline_inputs", function()
   -- pipeline_inputs calls glab.run for the raw CI file (primary) and
   -- glab.run_json for ci/lint merged_yaml (secondary). Both paths are tested.

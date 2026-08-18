@@ -565,9 +565,9 @@ function M.open()
   end
 end
 
-M.normalize_project_vars = normalize_project_vars
-M.fetch_project_vars = fetch_project_vars
-M.fetch_inputs = fetch_inputs
-M.merge_variables = merge_variables
+M._normalize_project_vars = normalize_project_vars
+M._fetch_project_vars = fetch_project_vars
+M._fetch_inputs = fetch_inputs
+M._merge_variables = merge_variables
 
 return M
