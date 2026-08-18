@@ -10,6 +10,7 @@ local known_keys = {
   "r",
   "A",
   "L",
+  "P",
   "R",
   "<CR>",
 }

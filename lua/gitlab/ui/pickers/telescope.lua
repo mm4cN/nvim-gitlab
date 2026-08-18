@@ -9,6 +9,17 @@ local format = require("gitlab.ci.format")
 
 local M = {}
 
+local function action_hints(actions)
+  local lines = {}
+
+  for _, action in ipairs(actions) do
+    table.insert(lines, action.key .. "  " .. action.label)
+  end
+
+  table.insert(lines, "")
+  return lines
+end
+
 function M.select(items, opts, callback)
   opts = opts or {}
 
@@ -136,12 +147,23 @@ local function jobs_picker(opts, title, attach_mappings)
     title = "Details",
     define_preview = function(self, entry)
       local job = entry and entry.value
-      local lines = {
+      local actions = {
+        { key = "<CR>", label = "Job details" },
+        { key = "<C-l>", label = "Logs" },
+        { key = "<C-a>", label = "Artifacts" },
+        { key = "<C-r>", label = "Re-run pipeline" },
+      }
+      vim.list_extend(actions, {
+        { key = "r", label = "Refresh" },
+        { key = "<C-b>", label = "Back" },
+      })
+      local lines = action_hints(actions)
+      vim.list_extend(lines, {
         "Pipeline #" .. tostring(pipeline.id),
         "Ref:    " .. format.value(pipeline.ref),
         "Status: " .. format.status_icon(pipeline.status) .. " " .. format.value(pipeline.status),
         "",
-      }
+      })
       if job then
         vim.list_extend(lines, format.job_preview(job))
       end
@@ -222,57 +244,6 @@ function M.show_pipeline(opts)
   end)
 end
 
-function M.show_jobs(opts)
-  local pipeline = opts.pipeline
-
-  jobs_picker(opts, "Jobs — Pipeline #" .. tostring(pipeline.id), function(prompt_bufnr, map)
-    local function selected_job()
-      local entry = action_state.get_selected_entry()
-      return entry and entry.value or nil
-    end
-
-    local function close_and(fn)
-      return function()
-        local job = selected_job()
-        telescope_actions.close(prompt_bufnr)
-        fn(job)
-      end
-    end
-
-    telescope_actions.select_default:replace(close_and(function(job)
-      if job then opts.actions.details(job) end
-    end))
-
-    map({ "i", "n" }, "<C-l>", close_and(function(job)
-      if job then opts.actions.logs(job) end
-    end), { desc = "Logs" })
-
-    map({ "i", "n" }, "<C-a>", close_and(function(job)
-      if job then opts.actions.artifacts(job) end
-    end), { desc = "Artifacts" })
-
-    map({ "i", "n" }, "<C-r>", close_and(function(job)
-      if job then opts.actions.retry(job) end
-    end), { desc = "Retry job" })
-
-    map({ "i", "n" }, "<C-p>", close_and(function(job)
-      if job then opts.actions.play(job) end
-    end), { desc = "Play job" })
-
-    map("n", "r", function()
-      telescope_actions.close(prompt_bufnr)
-      opts.actions.refresh()
-    end, { desc = "Refresh" })
-
-    map({ "i", "n" }, "<C-b>", function()
-      telescope_actions.close(prompt_bufnr)
-      if opts.on_back then opts.on_back() end
-    end, { desc = "Back" })
-
-    return true
-  end)
-end
-
 function M.show_job(opts)
   local job = opts.job
   local commit = job.commit or {}
@@ -281,7 +252,15 @@ function M.show_job(opts)
   local previewer = previewers.new_buffer_previewer({
     title = "Job Details",
     define_preview = function(self, _entry)
-      local lines = {
+      local lines = action_hints({
+        { key = "<CR>", label = "Logs" },
+        { key = "<C-r>", label = "Retry job" },
+        { key = "<C-a>", label = "Artifacts" },
+        { key = "<C-p>", label = "Play job" },
+        { key = "r", label = "Refresh" },
+        { key = "<C-b>", label = "Back" },
+      })
+      vim.list_extend(lines, {
         "Job #" .. tostring(job.id),
         "",
         "Name:      " .. format.value(job.name),
@@ -301,7 +280,7 @@ function M.show_job(opts)
         "  SHA:     " .. format.short_sha(commit.id or commit.sha),
         "  Title:   " .. format.value(commit.title),
         "  Author:  " .. format.value(commit.author_name),
-      }
+      })
       vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, lines)
     end,
   })

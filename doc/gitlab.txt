@@ -102,31 +102,16 @@ Pipelines:
         decoded. Unsupported scalar values are ignored rather than
         interpreted. This keeps discovery dependency-free; yq is not required.
 
-    :GitlabPipelineList
-        List recent project pipelines.
-
     :GitlabPipelineStatus
         Show the latest pipeline for the current branch.
 
-    :GitlabPipelineDetails
+    :GitlabPipelineList
         Select a pipeline and open its details view.
 
 Jobs:
 
     :GitlabJobList
-        List jobs from the latest pipeline.
-
-    :GitlabJobLogs
-        Select a job and open its logs in a named buffer.
-
-    :GitlabJobRetry
-        Select a job and retry it.
-
-    :GitlabJobDetails
         Select a job and open its details view.
-
-    :GitlabJobArtifacts
-        Select a job and download its artifacts.
 
 ==============================================================================
 PICKERS                                                *gitlab-pickers*
@@ -166,15 +151,6 @@ PIPELINES                                            *gitlab-pipelines*
 
 Pipeline views provide interactive navigation and actions.
 
-Pipeline List:
-
-    r       Refresh pipeline list
-    <CR>    Open pipeline details
-    R       Re-run pipeline
-    ]       Next page
-    [       Previous page
-    q       Close view
-
 Pipeline Status:
 
     q       Close view
@@ -203,20 +179,10 @@ JOBS                                                      *gitlab-jobs*
 
 Job views expose pipeline job information and actions.
 
-Job List:
-
-    r       Refresh job list
-    <CR>    Open job details
-    L       Open job logs
-    A       Download job artifacts
-    R       Retry job
-    P       Play manual job
-    b       Navigate back
-    q       Close view
-
 Job Details:
 
     r       Refresh job details
+    L       Open job logs
     A       Download job artifacts
     R       Retry job
     P       Play manual job (if manual)
@@ -272,7 +238,7 @@ Views are displayed in a reusable scratch window.
 
 Navigation hierarchy:
 
-    Pipeline List
+    Pipeline List picker
         |
         +-- Pipeline Details
                 |

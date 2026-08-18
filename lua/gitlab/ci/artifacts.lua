@@ -1,11 +1,9 @@
 local api = require("gitlab.api")
 local auth = require("gitlab.auth")
 local config = require("gitlab.config")
-local format = require("gitlab.ci.format")
 local git = require("gitlab.git")
 local buffer = require("gitlab.ui.buffer")
 local notification = require("gitlab.ui.notification")
-local picker = require("gitlab.ui.picker")
 local process = require("gitlab.util.process")
 
 local M = {}
@@ -155,44 +153,6 @@ function M.download(opts)
       b = buffer.back,
     },
   })
-end
-
-function M.pick_and_download()
-  local root = repo_root()
-  if not root then return end
-
-  local branch, branch_err = git.branch()
-  if not branch then
-    notification.error(branch_err)
-    return
-  end
-
-  local pipeline, pipeline_err = api.latest_pipeline({ cwd = root, ref = branch })
-  if not pipeline then
-    notification.error(pipeline_err)
-    return
-  end
-
-  local jobs, jobs_err = api.pipeline_jobs(pipeline.id, { cwd = root })
-  if not jobs then
-    notification.error(jobs_err)
-    return
-  end
-
-  if #jobs == 0 then
-    notification.error("No jobs found for pipeline: " .. tostring(pipeline.id))
-    return
-  end
-
-  picker.select(jobs, {
-    prompt = "GitLab job artifacts",
-    select_label = "Download artifacts",
-    format_item = format.job,
-    preview = format.job_preview,
-  }, function(job)
-    if not job then return end
-    M.download({ job_id = job.id, root = root })
-  end)
 end
 
 return M

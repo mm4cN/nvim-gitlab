@@ -2,12 +2,10 @@ local auth = require("gitlab.auth")
 local lint = require("gitlab.ci.lint")
 local pipelines = require("gitlab.ci.pipelines")
 local pipeline_runner = require("gitlab.ci.pipeline_runner")
-local jobs = require("gitlab.ci.jobs")
 local notification = require("gitlab.ui.notification")
 local health = require("gitlab.ui.health")
 local details = require("gitlab.ci.details")
 local job_details = require("gitlab.ci.job_details")
-local artifacts = require("gitlab.ci.artifacts")
 
 local M = {}
 
@@ -33,24 +31,15 @@ function M.setup()
 
   -- pipeline helpers
   command("GitlabPipelineRun", pipeline_runner.open, {})
-  command("GitlabPipelineList", pipelines.list, {})
   command("GitlabPipelineStatus", pipelines.status, {})
-  command("GitlabPipelineDetails", function()
+  command("GitlabPipelineList", function()
     details.show()
   end, {})
 
   -- job helpers
-  command("GitlabJobList", jobs.list)
-  command("GitlabJobRetry", function()
-    jobs.retry()
-  end, {})
-  command("GitlabJobLogs", function()
-    jobs.logs()
-  end, {})
-  command("GitlabJobDetails", function()
+  command("GitlabJobList", function()
     job_details.show()
   end, {})
-  command("GitlabJobArtifacts", artifacts.pick_and_download, {})
 end
 
 return M

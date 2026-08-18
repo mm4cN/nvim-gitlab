@@ -18,11 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `:GitlabPipelineRun` is now the canonical interactive pipeline runner, with project/ref selection, CI discovery, and manual variables.
 - YAML discovery remains dependency-free and now documents its intentionally supported subset.
 - Telescope selection falls back to `vim.ui` when Telescope is configured but unavailable.
+- `:GitlabPipelineList` and `:GitlabJobList` now use the configured picker backend to select an item and open its details.
 - The public command and configuration surfaces have been audited and stabilized for 1.0.
 
 ### Removed
 
 - The redundant simple pipeline runner and its separate project-run command.
+- The redundant `:GitlabPipelineDetails` and `:GitlabJobDetails` command names.
+- The standalone `:GitlabJobLogs`, `:GitlabJobRetry`, and `:GitlabJobArtifacts` commands; these actions remain available from the pipeline details and job details views.
+- The dedicated paginated pipeline-list buffer and its `[` / `]` navigation; pipeline selection now uses the configured picker backend.
 - The unused `default_branch` configuration option.
 
 ### Fixed

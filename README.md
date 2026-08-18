@@ -185,19 +185,14 @@ With Telescope enabled, pickers provide additional features:
 
 ```vim
 :GitlabPipelineRun
-:GitlabPipelineList
 :GitlabPipelineStatus
-:GitlabPipelineDetails
+:GitlabPipelineList
 ```
 
 ### Jobs
 
 ```vim
 :GitlabJobList
-:GitlabJobLogs
-:GitlabJobRetry
-:GitlabJobDetails
-:GitlabJobArtifacts
 ```
 
 The pipeline runner discovers `spec:inputs` from the root `.gitlab-ci.yml` and
@@ -218,8 +213,6 @@ Refreshable pipeline and job views support:
 - `A` Download artifacts
 - `R` Retry job / Re-run pipeline (auto-refreshes view)
 - `P` Play manual job (auto-refreshes view)
-- `]` Next page (pipeline list)
-- `[` Previous page (pipeline list)
 - `b` Navigate back
 - `q` Close view
 

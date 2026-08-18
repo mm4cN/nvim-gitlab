@@ -18,6 +18,7 @@ local log_buffer = require("gitlab.ci.log_buffer")
 local picker = require("gitlab.ui.picker")
 local pipelines = require("gitlab.ci.pipelines")
 local process = require("gitlab.util.process")
+local ui_state = require("gitlab.ui.state")
 
 local function with_mocks(mocks, fn, index)
   index = index or 1
@@ -29,6 +30,18 @@ local function with_mocks(mocks, fn, index)
   with_mock(mock[1], mock[2], mock[3], function()
     with_mocks(mocks, fn, index + 1)
   end)
+end
+
+local function with_picker_backend(name, backend, fn)
+  local module_name = "gitlab.ui.pickers." .. name
+  local old_picker = config.options.picker
+  local old_backend = package.loaded[module_name]
+  config.options.picker = name
+  package.loaded[module_name] = backend
+  local ok, err = pcall(fn)
+  config.options.picker = old_picker
+  package.loaded[module_name] = old_backend
+  if not ok then error(err) end
 end
 
 describe("job actions", function()
@@ -56,6 +69,49 @@ describe("job actions", function()
 end)
 
 describe("pipeline and job workflows", function()
+  for _, backend_name in ipairs({ "vim_ui", "telescope" }) do
+    it("runs GitlabPipelineList through " .. backend_name, function()
+      local shown
+      local pipeline = { id = 7, ref = "main", status = "success" }
+      local pipeline_jobs = { { id = 8, name = "test", status = "success" } }
+      with_picker_backend(backend_name, {
+        select = function(items, _, callback) callback(items[1]) end,
+        show_pipeline = function(opts) shown = opts end,
+      }, function()
+        with_mocks({
+          { git, "root", function() return "/repo", nil end },
+          { api, "pipelines", function() return { pipeline }, nil end },
+          { api, "pipeline_jobs", function() return pipeline_jobs, nil end },
+        }, function()
+          vim.cmd("GitlabPipelineList")
+        end)
+      end)
+      assert.eq(shown.pipeline, pipeline)
+      assert.eq(shown.jobs, pipeline_jobs)
+    end)
+
+    it("runs GitlabJobList through " .. backend_name, function()
+      local shown
+      local selected = { id = 8, name = "test", status = "manual" }
+      local full_job = { id = 8, name = "test", status = "manual", pipeline = { id = 7 } }
+      with_picker_backend(backend_name, {
+        select = function(items, _, callback) callback(items[1]) end,
+        show_job = function(opts) shown = opts end,
+      }, function()
+        with_mocks({
+          { git, "root", function() return "/repo", nil end },
+          { git, "branch", function() return "main", nil end },
+          { api, "latest_pipeline", function() return { id = 7 }, nil end },
+          { api, "pipeline_jobs", function() return { selected }, nil end },
+          { api, "job", function() return full_job, nil end },
+        }, function()
+          vim.cmd("GitlabJobList")
+        end)
+      end)
+      assert.eq(shown.job, full_job)
+    end)
+  end
+
   it("opens selected pipeline details with its jobs", function()
     local shown
     local pipeline = { id = 7, ref = "main", status = "success" }
@@ -73,23 +129,6 @@ describe("pipeline and job workflows", function()
     assert.eq(shown.jobs, pipeline_jobs)
   end)
 
-  it("opens the current pipeline job list", function()
-    local shown
-    local pipeline = { id = 7, ref = "main" }
-    local pipeline_jobs = { { id = 8, name = "test", status = "success" } }
-    with_mocks({
-      { git, "root", function() return "/repo", nil end },
-      { git, "branch", function() return "main", nil end },
-      { api, "latest_pipeline", function() return pipeline, nil end },
-      { api, "pipeline_jobs", function() return pipeline_jobs, nil end },
-      { picker, "show_jobs", function(opts) shown = opts end },
-    }, function()
-      jobs.list()
-    end)
-    assert.eq(shown.pipeline, pipeline)
-    assert.eq(shown.jobs, pipeline_jobs)
-  end)
-
   it("opens a pre-fetched job detail", function()
     local shown
     local job = { id = 8, name = "test", status = "manual" }
@@ -97,6 +136,59 @@ describe("pipeline and job workflows", function()
       job_details.show({ job = job, root = "/repo" })
     end)
     assert.eq(shown.job, job)
+  end)
+
+  it("navigates from pipeline details to job details", function()
+    local pipeline_view, job_view
+    local pipeline = { id = 7, ref = "main", status = "success" }
+    local listed_job = { id = 8, name = "test", status = "manual" }
+    local full_job = { id = 8, name = "test", status = "manual", pipeline = { id = 7 } }
+    with_mocks({
+      { git, "root", function() return "/repo", nil end },
+      { api, "pipelines", function() return { pipeline }, nil end },
+      { picker, "select", function(items, _, callback) callback(items[1]) end },
+      { api, "pipeline_jobs", function() return { listed_job }, nil end },
+      { picker, "show_pipeline", function(opts) pipeline_view = opts end },
+      { api, "job", function() return full_job, nil end },
+      { picker, "show_job", function(opts) job_view = opts end },
+    }, function()
+      details.show()
+      pipeline_view.actions.details(listed_job)
+    end)
+    assert.eq(job_view.job, full_job)
+    assert.truthy(job_view.on_back)
+  end)
+
+  it("keeps all job detail actions reachable", function()
+    local shown, called = nil, {}
+    local job = { id = 8, name = "deploy", status = "manual" }
+    with_mock(picker, "show_job", function(opts) shown = opts end, function()
+      job_details.show({ job = job, root = "/repo" })
+    end)
+    with_mocks({
+      { jobs, "logs", function(opts) called.logs = opts.args end },
+      { actions, "retry_job", function(id) called.retry = id end },
+      { artifacts, "download", function(opts) called.artifacts = opts.job_id end },
+      { actions, "play_job", function(id) called.play = id end },
+    }, function()
+      shown.actions.logs()
+      shown.actions.retry()
+      shown.actions.artifacts()
+      shown.actions.play()
+    end)
+    assert.eq(called.logs, 8)
+    assert.eq(called.retry, 8)
+    assert.eq(called.artifacts, 8)
+    assert.eq(called.play, 8)
+  end)
+
+  it("clears the manual play mapping when the next view does not define it", function()
+    buffer.show({ title = "Manual Job", lines = {}, keymaps = { P = function() end } })
+    assert.eq(vim.fn.maparg("P", "n", false, true).buffer, 1)
+    buffer.replace({ title = "Non-manual Job", lines = {}, keymaps = {} })
+    assert.eq(vim.fn.maparg("P", "n", false, true).buffer, nil)
+    buffer.close_current()
+    assert.eq(ui_state.buf, nil)
   end)
 
   it("renders current pipeline status", function()
