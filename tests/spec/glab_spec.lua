@@ -216,17 +216,17 @@ describe("glab.run_pipeline — input validation errors", function()
 end)
 
 describe("glab.run_pipeline — pipeline variables", function()
-  it("emits --variable KEY=VALUE for a variable", function()
+  it("emits --variables KEY:VALUE for a variable", function()
     local args = capture_args(function()
       glab.run_pipeline({
         ref = "main",
         variables = { { key = "VERSION", value = "1.2.3" } },
       })
     end)
-    assert.eq(first_after(args, "--variable"), "VERSION=1.2.3")
+    assert.eq(first_after(args, "--variables"), "VERSION:1.2.3")
   end)
 
-  it("emits multiple --variable flags for multiple variables", function()
+  it("emits multiple --variables flags for multiple variables", function()
     local args = capture_args(function()
       glab.run_pipeline({
         ref = "main",
@@ -236,10 +236,10 @@ describe("glab.run_pipeline — pipeline variables", function()
         },
       })
     end)
-    local vars = all_after(args, "--variable")
+    local vars = all_after(args, "--variables")
     assert.eq(#vars, 2)
-    assert.eq(vars[1], "VERSION=1.2.3")
-    assert.eq(vars[2], "ENV=staging")
+    assert.eq(vars[1], "VERSION:1.2.3")
+    assert.eq(vars[2], "ENV:staging")
   end)
 
   it("skips variables with empty key", function()
@@ -249,7 +249,7 @@ describe("glab.run_pipeline — pipeline variables", function()
         variables = { { key = "", value = "x" } },
       })
     end)
-    assert.eq(has_arg(args, "--variable"), false)
+    assert.eq(has_arg(args, "--variables"), false)
   end)
 
   it("uses empty string when variable value is nil", function()
@@ -259,12 +259,12 @@ describe("glab.run_pipeline — pipeline variables", function()
         variables = { { key = "FOO", value = nil } },
       })
     end)
-    assert.eq(first_after(args, "--variable"), "FOO=")
+    assert.eq(first_after(args, "--variables"), "FOO:")
   end)
 end)
 
 describe("glab.run_pipeline — inputs and variables are independent", function()
-  it("inputs use --input and variables use --variable, never mixed", function()
+  it("inputs use --input and variables use --variables, never mixed", function()
     local args = capture_args(function()
       glab.run_pipeline({
         ref = "main",
@@ -272,15 +272,16 @@ describe("glab.run_pipeline — inputs and variables are independent", function(
         variables = { { key  = "VERSION", value = "2.0.0" } },
       })
     end)
-    assert.eq(first_after(args, "--input"),    "env:prod")
-    assert.eq(first_after(args, "--variable"), "VERSION=2.0.0")
+    assert.eq(first_after(args, "--input"),     "env:prod")
+    assert.eq(first_after(args, "--variables"), "VERSION:2.0.0")
+    assert.eq(has_arg(args, "--variable"),      false)
   end)
 
-  it("no --variable flag is emitted when variables list is absent", function()
+  it("no --variables flag is emitted when variables list is absent", function()
     local args = capture_args(function()
       glab.run_pipeline({ ref = "main", inputs = { { name = "x", value = "y" } } })
     end)
-    assert.eq(has_arg(args, "--variable"), false)
+    assert.eq(has_arg(args, "--variables"), false)
   end)
 
   it("no --input flag is emitted when inputs list is absent", function()
