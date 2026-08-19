@@ -1,7 +1,34 @@
 -- Stub nui modules so gitlab.ci.pipeline_runner loads without nui installed.
-for _, mod in ipairs({ "nui.input", "nui.layout", "nui.popup" }) do
+for _, mod in ipairs({ "nui.layout", "nui.popup" }) do
   if not package.loaded[mod] then
     package.preload[mod] = function() return {} end
+  end
+end
+
+if not package.loaded["nui.input"] then
+  package.preload["nui.input"] = function()
+    return function()
+      return { map = function() end }
+    end
+  end
+end
+
+if not package.loaded["nui.menu"] then
+  package.preload["nui.menu"] = function()
+    local Menu = {}
+    function Menu.item(text, data)
+      data = data or {}
+      data.text = text
+      return data
+    end
+    return setmetatable(Menu, {
+      __call = function(_, _, options)
+        return {
+          options = options,
+          map = function() end,
+        }
+      end,
+    })
   end
 end
 

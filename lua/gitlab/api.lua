@@ -1,4 +1,5 @@
 local glab = require("gitlab.glab")
+local yq = require("gitlab.ci.yq")
 
 local M = {}
 
@@ -119,87 +120,89 @@ function M.pipelines(opts)
   })
 end
 
--- parse_spec_inputs extracts spec:inputs from raw .gitlab-ci.yml content.
--- EXPERIMENTAL: GitLab has no REST endpoint for spec:inputs discovery (issue #519944).
--- Supported subset only: 2-space indentation, plain or simply quoted scalars,
--- and block-style options lists. Anchors/aliases, block scalars, inline
--- collections, tabs, and escaped quoted scalars are intentionally not decoded.
-local function simple_scalar(value)
-  local first = value:sub(1, 1)
-  local last = value:sub(-1)
-  if first == "|" or first == ">" or first == "&" or first == "*"
-      or first == "[" or first == "{" then
-    return nil
-  end
-  if ((first == '"' and last == '"') or (first == "'" and last == "'"))
-      and value:find("\\", 1, true) then
-    return nil
-  end
-  return value:gsub('^["\']', ""):gsub('["\']$', "")
+local function is_map(value)
+  return type(value) == "table" and not vim.islist(value)
 end
 
-local function parse_spec_inputs(content)
+local function sorted_keys(value)
+  local keys = vim.tbl_keys(value)
+  table.sort(keys)
+  return keys
+end
+
+local function scalar(value, context)
+  if value == nil or value == vim.NIL then
+    return nil
+  end
+  local value_type = type(value)
+  if value_type == "string" then
+    return value
+  end
+  if value_type == "number" or value_type == "boolean" then
+    return tostring(value)
+  end
+  return nil, "Unsupported YAML value for " .. context .. ": expected a scalar, got " .. value_type
+end
+
+local function scalar_options(value, context)
+  if value == nil or value == vim.NIL then
+    return nil, nil
+  end
+  if type(value) ~= "table" or not vim.islist(value) then
+    return nil, "Unsupported YAML value for " .. context .. ": expected a list, got " .. type(value)
+  end
+
+  local options = {}
+  for i, option in ipairs(value) do
+    local normalized, err = scalar(option, context .. "[" .. i .. "]")
+    if err then
+      return nil, err
+    end
+    table.insert(options, normalized)
+  end
+  return options, nil
+end
+
+local function parse_spec_inputs(documents)
   local inputs = {}
-  local lines = vim.split(content, "\n", { plain = true })
-
-  local in_spec = false
-  local in_inputs = false
-  local current = nil
-  local in_options = false
-
-  for _, line in ipairs(lines) do
-    if line:match("^%s*#") or line:match("^%s*$") then
-      -- skip comments and blank lines
-    else
-      local indent = #line:match("^(%s*)")
-      local trimmed = vim.trim(line)
-
-      if indent == 0 then
-        in_spec = trimmed == "spec:"
-        in_inputs = false
-        current = nil
-        in_options = false
-      elseif in_spec and indent == 2 then
-        in_inputs = trimmed == "inputs:"
-        current = nil
-        in_options = false
-      elseif in_inputs and indent == 4 then
-        local name = trimmed:match("^([%w_%-]+)%s*:$")
-        if name then
-          current = { name = name, type = "string", value = "" }
-          table.insert(inputs, current)
-          in_options = false
+  for _, document in ipairs(documents) do
+    if is_map(document) and document.spec ~= nil and document.spec ~= vim.NIL then
+      if not is_map(document.spec) then
+        return nil, "Unsupported YAML value for spec: expected a map"
+      end
+      local raw_inputs = document.spec.inputs
+      if raw_inputs ~= nil and raw_inputs ~= vim.NIL then
+        if not is_map(raw_inputs) then
+          return nil, "Unsupported YAML value for spec.inputs: expected a map"
         end
-      elseif in_inputs and current and indent == 6 then
-        local key, val = trimmed:match("^([%w_%-]+)%s*:%s*(.-)%s*$")
-        if key == "options" then
-          in_options = true
-          current.options = {}
-        elseif key then
-          in_options = false
-          val = simple_scalar(val)
-          if key == "default" and val ~= nil then
-            current.default = val
-            current.value = val
-          elseif key == "description" and val ~= nil then
-            current.description = val
-          elseif key == "type" and val ~= nil then
-            current.type = val
+        for _, name in ipairs(sorted_keys(raw_inputs)) do
+          local raw = raw_inputs[name]
+          if raw == vim.NIL then raw = {} end
+          if not is_map(raw) then
+            return nil, "Unsupported YAML value for spec input '" .. name .. "': expected a map"
           end
-        end
-      elseif in_inputs and current and in_options and indent == 8 then
-        local item = trimmed:match("^%-%s*(.+)$")
-        if item then
-          item = simple_scalar(item)
-          if item ~= nil then
-            table.insert(current.options, item)
-          end
+          local input_type, type_err = scalar(raw.type, "spec input '" .. name .. "' type")
+          if type_err then return nil, type_err end
+          local default, default_err = scalar(raw.default, "spec input '" .. name .. "' default")
+          if default_err then return nil, default_err end
+          local description, description_err = scalar(raw.description, "spec input '" .. name .. "' description")
+          if description_err then return nil, description_err end
+          local options, options_err = scalar_options(raw.options, "spec input '" .. name .. "' options")
+          if options_err then return nil, options_err end
+
+          table.insert(inputs, {
+            name = name,
+            type = input_type or "string",
+            default = default,
+            description = description,
+            options = options,
+            value = default or "",
+          })
         end
       end
     end
   end
-
-  return inputs
+  return inputs, nil
 end
 
 function M.latest_pipeline_async(opts, callback)
@@ -262,60 +265,35 @@ function M.branches(opts)
   return names, nil
 end
 
--- parse_legacy_variables extracts top-level variables: entries that carry both
--- value: and description: sub-keys (legacy pipeline-variable convention).
--- Inline assignments (KEY: value) and entries without a description are excluded.
--- Uses the same deliberately limited scalar subset as spec:inputs. Only
--- 2-space indentation is supported; tabs and general YAML constructs are not.
-local function parse_legacy_variables(content)
+local function parse_legacy_variables(documents)
   local vars = {}
-  local lines = vim.split(content, "\n", { plain = true })
-
-  local in_variables = false
-  local current_name = nil
-  local current_value = nil
-  local current_description = nil
-
-  local function commit()
-    if current_name and current_value ~= nil and current_description and current_description ~= "" then
-      table.insert(vars, { key = current_name, value = current_value, description = current_description })
-    end
-    current_name = nil
-    current_value = nil
-    current_description = nil
-  end
-
-  for _, line in ipairs(lines) do
-    if not (line:match("^%s*#") or line:match("^%s*$")) then
-      local indent = #line:match("^(%s*)")
-      local trimmed = vim.trim(line)
-
-      if indent == 0 then
-        commit()
-        in_variables = trimmed == "variables:"
-      elseif in_variables and indent == 2 then
-        commit()
-        -- block-form only: trailing colon with no inline value
-        local name = trimmed:match("^([%w_%-]+)%s*:$")
-        if name then
-          current_name = name
-        end
-      elseif in_variables and current_name and indent == 4 then
-        local key, val = trimmed:match("^([%w_%-]+)%s*:%s*(.-)%s*$")
-        if key and val then
-          val = simple_scalar(val)
-          if key == "value" then
-            current_value = val
-          elseif key == "description" then
-            current_description = val
+  for _, document in ipairs(documents) do
+    if is_map(document) and document.variables ~= nil and document.variables ~= vim.NIL then
+      if not is_map(document.variables) then
+        return nil, "Unsupported YAML value for variables: expected a map"
+      end
+      for _, key in ipairs(sorted_keys(document.variables)) do
+        local raw = document.variables[key]
+        if is_map(raw) then
+          local description, description_err = scalar(raw.description, "legacy variable '" .. key .. "' description")
+          if description_err then return nil, description_err end
+          if raw.value ~= nil and description and description ~= "" then
+            local value, value_err = scalar(raw.value, "legacy variable '" .. key .. "' value")
+            if value_err then return nil, value_err end
+            local options, options_err = scalar_options(raw.options, "legacy variable '" .. key .. "' options")
+            if options_err then return nil, options_err end
+            table.insert(vars, {
+              key = key,
+              value = value,
+              description = description,
+              options = options,
+            })
           end
         end
       end
     end
   end
-  commit()
-
-  return vars
+  return vars, nil
 end
 
 function M.pipeline_inputs(opts)
@@ -339,7 +317,25 @@ function M.pipeline_inputs(opts)
   local lint_result, _ = M.get(lint_path, { cwd = opts.cwd })
   local merged = (lint_result and lint_result.merged_yaml ~= "" and lint_result.merged_yaml) or content
 
-  return parse_spec_inputs(content), nil, parse_legacy_variables(merged)
+  local raw_documents, parse_err = yq.parse_documents(content, { cwd = opts.cwd, multiple = true })
+  if not raw_documents then
+    return nil, parse_err
+  end
+  local inputs, inputs_err = parse_spec_inputs(raw_documents)
+  if not inputs then
+    return nil, inputs_err
+  end
+
+  local merged_documents, merged_err = yq.parse_documents(merged, { cwd = opts.cwd, multiple = true })
+  if not merged_documents then
+    return nil, merged_err
+  end
+  local variables, variables_err = parse_legacy_variables(merged_documents)
+  if not variables then
+    return nil, variables_err
+  end
+
+  return inputs, nil, variables
 end
 
 return M

@@ -1,5 +1,6 @@
 local Input = require("nui.input")
 local Layout = require("nui.layout")
+local Menu = require("nui.menu")
 local Popup = require("nui.popup")
 
 local api = require("gitlab.api")
@@ -12,7 +13,58 @@ local M = {}
 
 local MAX_DYNAMIC_FIELDS = 7
 local MAX_VARIABLES = 7 -- UI layout limit, not a GitLab restriction
-local HINTS_SIZE = 4
+
+local function runner_hint_lines()
+  return {
+    "",
+    "  <Tab>    Next field",
+    "  <S-Tab>  Previous field",
+    "  j / k    Choose option",
+    "  <C-r>    Pick ref (Ref field)",
+    "  a        Add variable",
+    "  d        Remove added variable",
+    "  <CR>     Run",
+    "  q / <Esc>  Close",
+    "",
+  }
+end
+
+local function sanitize_ui(value)
+  local text = tostring(value or "")
+  text = text:gsub("\r\n", " "):gsub("[\r\n]", " "):gsub("\t", "  ")
+  return text:gsub("%s+$", "")
+end
+
+local function option_index(options, value)
+  for i, option in ipairs(options or {}) do
+    if option == value then
+      return i
+    end
+  end
+  return nil
+end
+
+local function validate_option_values(entries)
+  for _, entry in ipairs(entries or {}) do
+    if entry.options and #entry.options > 0 and not option_index(entry.options, entry.value) then
+      local label = entry.name or entry.key or "field"
+      return nil, "Invalid value for '" .. label .. "': select one of the configured options"
+    end
+  end
+  return true, nil
+end
+
+local function collect_inputs(fields)
+  local valid, err = validate_option_values(fields)
+  if not valid then
+    return nil, err
+  end
+  local inputs = {}
+  for _, field in ipairs(fields) do
+    table.insert(inputs, { name = field.name, value = field.value, type = field.type })
+  end
+  return inputs, nil
+end
 
 -- merge_variables builds the final variable list for the pipeline trigger.
 -- Project variables go first; manual variables override matching keys.
@@ -64,16 +116,163 @@ end
 local function focus(component)
   if component and component.winid and vim.api.nvim_win_is_valid(component.winid) then
     vim.api.nvim_set_current_win(component.winid)
-    vim.cmd("startinsert!")
+    if component._gitlab_component_kind == "menu" then
+      vim.cmd("stopinsert")
+    else
+      vim.cmd("startinsert!")
+    end
   end
 end
 
 local function field_label(field)
-  local label = field.name
-  if field.options and #field.options > 0 then
-    label = label .. " (" .. table.concat(field.options, " | ") .. ")"
+  return sanitize_ui(field.name)
+end
+
+local function make_field_component(field, label)
+  if not field.options or #field.options == 0 then
+    local input = make_input(label, field.value, function(value) field.value = value end)
+    input._gitlab_component_kind = "input"
+    return input, 3, nil
   end
-  return label
+
+  local items = {}
+  for _, value in ipairs(field.options) do
+    table.insert(items, Menu.item(sanitize_ui(value), { value = value }))
+  end
+
+  local entry = {
+    initializing = true,
+    selected_index = option_index(field.options, field.value),
+  }
+  local height = math.min(#items, 4)
+  local menu = Menu({
+    border = {
+      style = "rounded",
+      text = { top = " " .. label .. " ", top_align = "left" },
+    },
+  }, {
+    lines = items,
+    max_height = height,
+    keymap = {
+      focus_next = { "j", "<Down>" },
+      focus_prev = { "k", "<Up>" },
+      close = {},
+      submit = {},
+    },
+    on_change = function(item)
+      if not entry.initializing then
+        field.value = item.value
+      end
+    end,
+  })
+  menu._gitlab_component_kind = "menu"
+  entry.component = menu
+  return menu, height + 2, entry
+end
+
+local function configure_tab_navigation(tab_order)
+  for i, component in ipairs(tab_order) do
+    local next_idx = (i % #tab_order) + 1
+    local prev_idx = ((i - 2) % #tab_order) + 1
+
+    component:map("i", "<Tab>", function()
+      vim.cmd("stopinsert")
+      vim.schedule(function() focus(tab_order[next_idx]) end)
+    end, { noremap = true })
+    component:map("n", "<Tab>", function()
+      vim.schedule(function() focus(tab_order[next_idx]) end)
+    end, { noremap = true })
+    component:map("i", "<S-Tab>", function()
+      vim.cmd("stopinsert")
+      vim.schedule(function() focus(tab_order[prev_idx]) end)
+    end, { noremap = true })
+    component:map("n", "<S-Tab>", function()
+      vim.schedule(function() focus(tab_order[prev_idx]) end)
+    end, { noremap = true })
+  end
+end
+
+local function open_ref_picker(state, branches, close_runner, fetch, rebuild, select)
+  local previous_ref = state.ref
+  local completed = false
+  close_runner()
+  select(branches, { prompt = "Select ref" }, function(selected)
+    if completed then
+      return
+    end
+    completed = true
+    if selected then
+      state.ref = selected
+      fetch(state)
+    else
+      state.ref = previous_ref
+    end
+    rebuild({ focus_ref = true })
+  end)
+end
+
+local function remove_added_variable(state, index)
+  if type(index) ~= "number" or index < 1 or index > #state.variables then
+    return false
+  end
+  table.remove(state.variables, index)
+  if #state.variables == 0 then
+    return true, { focus_ref = true }
+  end
+  return true, { focus_variable_index = math.min(index, #state.variables) }
+end
+
+local function submit_pipeline(state, close_runner, notify, trigger)
+  if state.project == "" then
+    notify.error("Project is required")
+    return false
+  end
+
+  if not state.project:match("^[^/]+/[^/]+") then
+    notify.error("Project must be in namespace/project format")
+    return false
+  end
+
+  if state.ref == "" then
+    notify.error("Ref is required")
+    return false
+  end
+
+  local inputs, inputs_err = collect_inputs(state.fields)
+  if not inputs then
+    notify.error(inputs_err)
+    return false
+  end
+  local yaml_valid, yaml_err = validate_option_values(state.yaml_vars)
+  if not yaml_valid then
+    notify.error(yaml_err)
+    return false
+  end
+  local project_valid, project_err = validate_option_values(state.project_vars)
+  if not project_valid then
+    notify.error(project_err)
+    return false
+  end
+
+  close_runner()
+  notify.info("Running pipeline on " .. state.ref .. " for " .. state.project .. "...")
+
+  -- Variable priority: API project vars < YAML described vars < manual user vars.
+  local _, err = trigger({
+    project = state.project,
+    ref = state.ref,
+    inputs = inputs,
+    variables = merge_variables(merge_variables(state.project_vars, state.yaml_vars), state.variables),
+    cwd = state.root or vim.fn.getcwd(),
+  })
+
+  if err then
+    notify.error(err)
+    return false
+  end
+
+  notify.info("Pipeline triggered for " .. state.project .. " on " .. state.ref)
+  return true
 end
 
 -- normalize_project_vars filters raw API variables to those with a non-empty
@@ -152,7 +351,9 @@ local function fetch_inputs(state)
         type = input.type or "string",
         default = input.default,
         options = input.options,
-        value = existing[input.name] or tostring(input.default or ""),
+        value = existing[input.name] ~= nil and existing[input.name]
+          or (input.default ~= nil and tostring(input.default)
+            or (input.options and #input.options > 0 and input.options[1] or "")),
       })
     end
   end
@@ -186,7 +387,9 @@ local function make_desc_popup()
   })
 end
 
-local function build_and_mount(state, on_run, on_refresh, on_pick_ref, on_add_variable, on_close, on_submit_project, on_submit_ref)
+local function build_and_mount(state, on_run, on_pick_ref, on_add_variable, on_remove_variable, on_close, on_submit_project, on_submit_ref)
+  local hint_lines = runner_hint_lines()
+  local hints_size = #hint_lines
   local project_input = make_input("Project", state.project, function(v)
     state.project = v
   end, on_submit_project)
@@ -195,41 +398,50 @@ local function build_and_mount(state, on_run, on_refresh, on_pick_ref, on_add_va
     state.ref = v
   end, on_submit_ref)
 
-  -- Each entry: { input=Input, desc=Popup|nil, desc_text=string|nil }
+  -- Each entry: { input=Input|Menu, size=number, menu_entry=table|nil, desc=Popup|nil, desc_text=string|nil }
   local field_entries = {}
   for _, field in ipairs(state.fields) do
     local f = field
-    local input = make_input(field_label(f), f.value, function(v) f.value = v end)
+    local input, size, menu_entry = make_field_component(f, field_label(f))
     local desc_popup, desc_text
     if f.description and f.description ~= "" then
       desc_popup = make_desc_popup()
-      desc_text = f.description
+      desc_text = sanitize_ui(f.description)
     end
-    table.insert(field_entries, { input = input, desc = desc_popup, desc_text = desc_text })
+    table.insert(field_entries, {
+      input = input, size = size, menu_entry = menu_entry,
+      desc = desc_popup, desc_text = desc_text,
+    })
   end
 
   local yaml_var_entries = {}
   for _, yv in ipairs(state.yaml_vars) do
     local y = yv
-    local input = make_input(y.key, y.value, function(v) y.value = v end)
+    local input, size, menu_entry = make_field_component(y, sanitize_ui(y.key))
     local desc_popup, desc_text
     if y.description and y.description ~= "" then
       desc_popup = make_desc_popup()
-      desc_text = y.description
+      desc_text = sanitize_ui(y.description)
     end
-    table.insert(yaml_var_entries, { input = input, desc = desc_popup, desc_text = desc_text })
+    table.insert(yaml_var_entries, {
+      input = input, size = size, menu_entry = menu_entry,
+      desc = desc_popup, desc_text = desc_text,
+    })
   end
 
   local proj_var_entries = {}
   for _, pv in ipairs(state.project_vars) do
     local p = pv
-    local input = make_input(p.key, p.value, function(v) p.value = v end)
+    local input, size, menu_entry = make_field_component(p, sanitize_ui(p.key))
     local desc_popup, desc_text
     if p.description and p.description ~= "" then
       desc_popup = make_desc_popup()
-      desc_text = p.description
+      desc_text = sanitize_ui(p.description)
     end
-    table.insert(proj_var_entries, { input = input, desc = desc_popup, desc_text = desc_text })
+    table.insert(proj_var_entries, {
+      input = input, size = size, menu_entry = menu_entry,
+      desc = desc_popup, desc_text = desc_text,
+    })
   end
 
   local var_inputs = {}
@@ -261,12 +473,12 @@ local function build_and_mount(state, on_run, on_refresh, on_pick_ref, on_add_va
     return n
   end
 
-  local n_dynamic = #field_entries
-  local n_yaml_vars = #yaml_var_entries
-  local n_proj_vars = #proj_var_entries
   local n_vars = #var_inputs
   local n_descs = count_descs(field_entries) + count_descs(yaml_var_entries) + count_descs(proj_var_entries)
-  local height = (2 + n_dynamic + n_yaml_vars + n_proj_vars + n_vars) * 3 + n_descs + HINTS_SIZE
+  local height = 2 * 3 + n_vars * 3 + n_descs + hints_size
+  for _, entries in ipairs({ field_entries, yaml_var_entries, proj_var_entries }) do
+    for _, entry in ipairs(entries) do height = height + entry.size end
+  end
 
   local boxes = {
     Layout.Box(project_input, { size = 3 }),
@@ -274,7 +486,7 @@ local function build_and_mount(state, on_run, on_refresh, on_pick_ref, on_add_va
   }
   local function add_entries(entries)
     for _, e in ipairs(entries) do
-      table.insert(boxes, Layout.Box(e.input, { size = 3 }))
+      table.insert(boxes, Layout.Box(e.input, { size = e.size }))
       if e.desc then
         table.insert(boxes, Layout.Box(e.desc, { size = 1 }))
       end
@@ -286,7 +498,7 @@ local function build_and_mount(state, on_run, on_refresh, on_pick_ref, on_add_va
   for _, vi in ipairs(var_inputs) do
     table.insert(boxes, Layout.Box(vi, { size = 3 }))
   end
-  table.insert(boxes, Layout.Box(hints_popup, { size = HINTS_SIZE }))
+  table.insert(boxes, Layout.Box(hints_popup, { size = hints_size }))
 
   local layout = Layout(
     { position = "50%", size = { width = 60, height = height } },
@@ -295,14 +507,21 @@ local function build_and_mount(state, on_run, on_refresh, on_pick_ref, on_add_va
 
   layout:mount()
 
+  for _, entries in ipairs({ field_entries, yaml_var_entries, proj_var_entries }) do
+    for _, entry in ipairs(entries) do
+      if entry.menu_entry then
+        local selected = entry.menu_entry.selected_index
+        if selected and entry.input.winid and vim.api.nvim_win_is_valid(entry.input.winid) then
+          vim.api.nvim_win_set_cursor(entry.input.winid, { selected, 0 })
+        end
+        entry.menu_entry.initializing = false
+      end
+    end
+  end
+
   -- Populate hints and description text after mount.
   vim.bo[hints_popup.bufnr].modifiable = true
-  vim.api.nvim_buf_set_lines(hints_popup.bufnr, 0, -1, false, {
-    "",
-    "  Tab  Next field    r  Refresh    <CR>  Run    q  Close",
-    "  <C-r>  Pick ref (Ref field)    a  Add variable",
-    "",
-  })
+  vim.api.nvim_buf_set_lines(hints_popup.bufnr, 0, -1, false, hint_lines)
   vim.bo[hints_popup.bufnr].modifiable = false
 
   local function populate_descs(entries)
@@ -335,32 +554,14 @@ local function build_and_mount(state, on_run, on_refresh, on_pick_ref, on_add_va
   -- project_input and ref_input commit on Enter (via on_submit); all other fields run the pipeline.
   local commit_components = { [project_input] = true, [ref_input] = true }
 
-  for i, component in ipairs(tab_order) do
-    local next_idx = (i % #tab_order) + 1
-    local prev_idx = ((i - 2) % #tab_order) + 1
+  configure_tab_navigation(tab_order)
 
-    -- stopinsert before the window switch prevents insert-mode teardown from
-    -- racing with startinsert! in the target window.
-    component:map("i", "<Tab>", function()
-      vim.cmd("stopinsert")
-      vim.schedule(function()
-        focus(tab_order[next_idx])
-      end)
-    end, { noremap = true })
-
-    component:map("i", "<S-Tab>", function()
-      vim.cmd("stopinsert")
-      vim.schedule(function()
-        focus(tab_order[prev_idx])
-      end)
-    end, { noremap = true })
-
+  for _, component in ipairs(tab_order) do
     if not commit_components[component] then
       component:map("i", "<CR>", on_run, { noremap = true })
       component:map("n", "<CR>", on_run, { noremap = true })
     end
 
-    component:map("n", "r", on_refresh, { noremap = true })
     component:map("n", "a", on_add_variable, { noremap = true })
 
     component:map("i", "<Esc>", function()
@@ -369,6 +570,12 @@ local function build_and_mount(state, on_run, on_refresh, on_pick_ref, on_add_va
 
     component:map("n", "q", on_close, { noremap = true })
     component:map("n", "<Esc>", on_close, { noremap = true })
+  end
+
+  for index, component in ipairs(var_inputs) do
+    component:map("n", "d", function()
+      on_remove_variable(index)
+    end, { noremap = true })
   end
 
   ref_input:map("i", "<C-r>", function()
@@ -406,48 +613,12 @@ function M.open()
   end
 
   local function run()
-    if state.project == "" then
-      notification.error("Project is required")
-      return
-    end
-
-    if not state.project:match("^[^/]+/[^/]+") then
-      notification.error("Project must be in namespace/project format")
-      return
-    end
-
-    if state.ref == "" then
-      notification.error("Ref is required")
-      return
-    end
-
-    local inputs = {}
-    for _, field in ipairs(state.fields) do
-      table.insert(inputs, { name = field.name, value = field.value, type = field.type })
-    end
-
-    notification.info("Running pipeline on " .. state.ref .. " for " .. state.project .. "...")
-
-    -- Variable priority: API project vars < YAML described vars < manual user vars.
-    local _, err = glab.run_pipeline({
-      project = state.project,
-      ref = state.ref,
-      inputs = inputs,
-      variables = merge_variables(merge_variables(state.project_vars, state.yaml_vars), state.variables),
-      cwd = state.root or vim.fn.getcwd(),
-    })
-
-    if err then
-      notification.error(err)
-      return
-    end
-
-    notification.info("Pipeline triggered for " .. state.project .. " on " .. state.ref)
+    submit_pipeline(state, close, notification, glab.run_pipeline)
   end
 
-  local refresh      -- forward declaration for mutual reference with build
   local build        -- forward declaration for mutual reference with pick_ref / on_submit_*
   local add_variable -- forward declaration for mutual reference with build
+  local remove_variable
   local on_submit_project
   local on_submit_ref
 
@@ -474,14 +645,7 @@ function M.open()
       return
     end
 
-    picker.select(branches, { prompt = "Select ref" }, function(selected)
-      if not selected then
-        return
-      end
-      state.ref = selected
-      fetch_inputs(state)
-      build({ focus_ref = true })
-    end)
+    open_ref_picker(state, branches, close, fetch_inputs, build, picker.select)
   end
 
   add_variable = function()
@@ -491,6 +655,14 @@ function M.open()
     end
     table.insert(state.variables, { key = "", value = "" })
     build({ focus_last_var = true })
+  end
+
+  remove_variable = function(index)
+    local removed, focus_opts = remove_added_variable(state, index)
+    if not removed then
+      return
+    end
+    build(focus_opts)
   end
 
   on_submit_project = function()
@@ -519,14 +691,16 @@ function M.open()
     end
 
     local layout, project_input, ref_input, var_inputs =
-      build_and_mount(state, run, function() refresh() end, pick_ref, add_variable, close, on_submit_project, on_submit_ref)
+      build_and_mount(state, run, pick_ref, add_variable, remove_variable, close, on_submit_project, on_submit_ref)
     current_layout = layout
 
   -- Schedule focus so it fires after NUI completes its async mount tick.
   -- This ensures startinsert! lands in a fully-created window, giving the user
   -- immediate insert mode without needing to press `i`.
   vim.schedule(function()
-    if opts.focus_last_var and var_inputs and #var_inputs > 0 then
+    if opts.focus_variable_index and var_inputs and var_inputs[opts.focus_variable_index] then
+      focus(var_inputs[opts.focus_variable_index])
+    elseif opts.focus_last_var and var_inputs and #var_inputs > 0 then
       focus(var_inputs[#var_inputs])
     elseif opts.focus_ref then
       focus(ref_input)
@@ -534,26 +708,6 @@ function M.open()
       focus(project_input)
     end
   end)
-  end
-
-  refresh = function()
-    if state.project == "" or state.ref == "" then
-      notification.warn("Set project and ref before refreshing")
-      return
-    end
-
-    notification.info("Fetching pipeline inputs for " .. state.project .. "...")
-    fetch_inputs(state)
-    fetch_project_vars(state)
-    build()
-
-    local n_inputs = #state.fields
-    local n_yaml = #state.yaml_vars
-    if n_inputs > 0 or n_yaml > 0 then
-      notification.info("Found " .. n_inputs .. " input(s) and " .. n_yaml .. " described variable(s)")
-    else
-      notification.info("No pipeline inputs or described variables configured")
-    end
   end
 
   fetch_inputs(state)
@@ -569,5 +723,15 @@ M._normalize_project_vars = normalize_project_vars
 M._fetch_project_vars = fetch_project_vars
 M._fetch_inputs = fetch_inputs
 M._merge_variables = merge_variables
+M._sanitize_ui = sanitize_ui
+M._option_index = option_index
+M._validate_option_values = validate_option_values
+M._collect_inputs = collect_inputs
+M._make_field_component = make_field_component
+M._configure_tab_navigation = configure_tab_navigation
+M._open_ref_picker = open_ref_picker
+M._runner_hint_lines = runner_hint_lines
+M._remove_added_variable = remove_added_variable
+M._submit_pipeline = submit_pipeline
 
 return M

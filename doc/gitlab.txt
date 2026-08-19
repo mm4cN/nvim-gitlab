@@ -4,11 +4,13 @@ REQUIREMENTS                                        *gitlab-requirements*
 - Neovim 0.12+
 - git
 - glab (required)
+- yq with YAML-to-JSON single- and multi-document support (required for CI)
 - nui.nvim (required)
 - telescope.nvim (optional, for Telescope picker backend)
 
 GITLAB_TOKEN is optional when glab is already authenticated. It is required
-only by :GitlabAuth. yq is not required.
+only by :GitlabAuth. CI discovery probes generic YAML-to-JSON single- and
+multi-document capabilities instead of relying on a yq vendor or version.
 
 Authentication is performed through the glab CLI.
 
@@ -82,25 +84,31 @@ Pipelines:
         Runner keybindings:
 
             Tab / S-Tab     Move to next / previous field.
+            j / k           Move through an option field.
+            Down / Up       Move through an option field.
             <C-r>           Pick a branch from the selected project
                             (available on the Ref field only).
             a               Add a pipeline variable field (normal mode).
-            r               Refresh spec:inputs from the current project/ref.
+            d               Remove the focused user-added variable (normal
+                            mode). Discovered variables cannot be removed.
             <CR>            Run the pipeline.
             q / <Esc>       Close the runner.
 
         Pipeline variables are independent from spec:inputs. Variables are
         passed to glab as --variables KEY:VALUE. Up to 7 variable fields can
-        be added per run (UI limit).
+        be added per run (UI limit). Discovery refreshes automatically after
+        the project or ref changes.
 
-        Automatic YAML discovery is EXPERIMENTAL. spec:inputs are read from
-        the root .gitlab-ci.yml; legacy described variables are read from
-        GitLab's include-expanded merged YAML. The local parser intentionally
-        supports only 2-space indentation, plain or simply quoted scalar
-        values, and block-style options lists. Anchors and aliases, multiline
-        scalars, inline collections, tabs, and escaped quoted scalars are not
-        decoded. Unsupported scalar values are ignored rather than
-        interpreted. This keeps discovery dependency-free; yq is not required.
+        Fields with configured options are selection menus; other fields
+        remain editable inputs. Multiline option labels are normalized for
+        display, while the original selected value is submitted unchanged.
+
+        Automatic YAML discovery is EXPERIMENTAL and requires a compatible yq
+        YAML-to-JSON transcoder. spec:inputs are read from the root
+        .gitlab-ci.yml; legacy described variables are read from GitLab's
+        include-expanded merged YAML. GitLab-specific discovery is performed
+        in Lua. Successful transcoding strategies are cached for the current
+        Neovim session.
 
     :GitlabPipelineStatus
         Show the latest pipeline for the current branch.
@@ -337,6 +345,7 @@ Health checks include:
 
 - git availability
 - glab availability
+- required yq single- and multi-document YAML-to-JSON capabilities
 - required nui.nvim availability
 - configured Telescope picker availability and vim.ui fallback
 - optional token status for :GitlabAuth

@@ -32,11 +32,13 @@ Merge Requests, Issues, and project management features are currently out of sco
 - Neovim 0.12+
 - git
 - [glab](https://gitlab.com/gitlab-org/cli) (required)
+- yq with YAML-to-JSON single- and multi-document support (required for CI discovery)
 - [MunifTanjim/nui.nvim](https://github.com/MunifTanjim/nui.nvim) (required)
 - [nvim-telescope/telescope.nvim](https://github.com/nvim-telescope/telescope.nvim) (optional; used when `picker = "telescope"`)
 
 `GITLAB_TOKEN` is optional when `glab` is already authenticated. It is required
-only when using `:GitlabAuth`. `yq` is not required.
+only when using `:GitlabAuth`. CI discovery probes the installed `yq` for its
+generic YAML-to-JSON single- and multi-document transcoding capabilities.
 
 ## Installation
 
@@ -195,13 +197,16 @@ With Telescope enabled, pickers provide additional features:
 :GitlabJobList
 ```
 
-The pipeline runner discovers `spec:inputs` from the root `.gitlab-ci.yml` and
-legacy described variables from GitLab's merged CI YAML. Discovery intentionally
-supports a limited YAML subset: 2-space indentation, plain or simply quoted
-scalar values, and block-style `options` lists. Anchors and aliases, multiline
-scalars, inline collections, tabs, and escaped quoted scalars are not decoded.
-Unsupported scalar values are ignored rather than interpreted. This keeps YAML
-discovery dependency-free; `yq` is not required.
+The pipeline runner uses a compatible `yq` only to transcode YAML documents to
+JSON. Lua discovers `spec:inputs` from the root `.gitlab-ci.yml` and legacy
+described variables from GitLab's include-expanded merged CI YAML. Discovery
+reports single- and multi-document capability failures separately. Successful
+strategy probing is cached for the current Neovim session.
+
+Pipeline fields with configured options use selection menus (`j`/`k` or arrow
+keys). Tab and Shift-Tab continue across editable and selection fields. Option
+labels are normalized for display, while selected values are submitted without
+destructive sanitization.
 
 ### Interactive Views
 

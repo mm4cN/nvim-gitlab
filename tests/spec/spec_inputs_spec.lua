@@ -4,394 +4,115 @@ local it = runner.it
 local assert = runner.assert
 local with_mock = runner.with_mock
 
-local glab = require("gitlab.glab")
 local api = require("gitlab.api")
+local glab = require("gitlab.glab")
+local yq = require("gitlab.ci.yq")
 
--- parse_spec_inputs is a local function tested through api.pipeline_inputs.
--- pipeline_inputs calls glab.run for the raw CI file (spec:inputs source) and
--- glab.run_json for ci/lint merged_yaml (legacy variables source).
-local function parse_yaml(content)
-  local inputs, err
-  with_mock(glab, "run", function()
-    return content, nil
-  end, function()
-    with_mock(glab, "run_json", function()
-      return { merged_yaml = content }, nil
-    end, function()
-      inputs, err = api.pipeline_inputs({ project = "ns/proj", ref = "main" })
+local function discover(raw_documents, merged_documents)
+  local calls = {}
+  local inputs, err, vars
+  with_mock(glab, "run", function() return "raw yaml", nil end, function()
+    with_mock(glab, "run_json", function() return { merged_yaml = "merged yaml" }, nil end, function()
+      with_mock(yq, "parse_documents", function(content, opts)
+        table.insert(calls, { content = content, cwd = opts.cwd, multiple = opts.multiple })
+        if #calls == 1 then return raw_documents or { {} }, nil end
+        return merged_documents or { {} }, nil
+      end, function()
+        inputs, err, vars = api.pipeline_inputs({ project = "ns/proj", ref = "main", cwd = "/repo" })
+      end)
     end)
   end)
-  return inputs, err
+  return inputs, err, vars, calls
 end
 
-describe("spec:inputs — no matching content", function()
-  it("returns empty list when file has no spec: block", function()
-    local inputs, err = parse_yaml("image: alpine\nstages:\n  - build\n")
+describe("yq-backed spec:inputs discovery", function()
+  it("passes raw and include-expanded YAML through the generic document adapter", function()
+    local inputs, err, vars, calls = discover({ {} }, { {} })
     assert.is_nil(err)
     assert.eq(#inputs, 0)
+    assert.eq(#vars, 0)
+    assert.eq(#calls, 2)
+    assert.eq(calls[1].content, "raw yaml")
+    assert.eq(calls[2].content, "merged yaml")
+    assert.eq(calls[1].cwd, "/repo")
+    assert.eq(calls[1].multiple, true)
   end)
 
-  it("returns empty list when spec: has no inputs: key", function()
-    local inputs, err = parse_yaml("spec:\n  other: value\n")
-    assert.is_nil(err)
-    assert.eq(#inputs, 0)
+  it("preserves normalized shapes and semantic scalar values", function()
+    local inputs = discover({ { spec = { inputs = {
+      ["deploy-env"] = {
+        type = "string", default = "line one\nline two\n",
+        description = "Deployment target\n", options = { "dev", "line one\nline two\n", 42, false },
+      },
+      count = { type = "number", default = 3 },
+    } } } })
+    local by_name = {}
+    for _, input in ipairs(inputs) do by_name[input.name] = input end
+    assert.eq(by_name["deploy-env"].default, "line one\nline two\n")
+    assert.eq(by_name["deploy-env"].value, "line one\nline two\n")
+    assert.eq(by_name["deploy-env"].description, "Deployment target\n")
+    assert.eq(by_name["deploy-env"].options[2], "line one\nline two\n")
+    assert.eq(by_name["deploy-env"].options[3], "42")
+    assert.eq(by_name["deploy-env"].options[4], "false")
+    assert.eq(by_name.count.default, "3")
+    assert.eq(by_name.count.value, "3")
   end)
 
-  it("returns empty list when inputs: block is empty", function()
-    local inputs, err = parse_yaml("spec:\n  inputs:\n")
-    assert.is_nil(err)
-    assert.eq(#inputs, 0)
+  it("locates spec.inputs across generic YAML documents", function()
+    local inputs = discover({
+      { metadata = "header" },
+      { spec = { inputs = { environment = { default = "staging" } } } },
+      { job = { script = "echo ok" } },
+    })
+    assert.eq(#inputs, 1)
+    assert.eq(inputs[1].name, "environment")
+    assert.eq(inputs[1].value, "staging")
   end)
 
-  it("returns nil and error when file content is empty", function()
-    local inputs, err = parse_yaml("")
+  it("returns a yq parsing error without attempting legacy discovery", function()
+    local calls = 0
+    local inputs, err
+    with_mock(glab, "run", function() return "bad yaml", nil end, function()
+      with_mock(glab, "run_json", function() return { merged_yaml = "merged" }, nil end, function()
+        with_mock(yq, "parse_documents", function()
+          calls = calls + 1
+          return nil, "yq parse failed"
+        end, function()
+          inputs, err = api.pipeline_inputs({ project = "ns/proj", ref = "main" })
+        end)
+      end)
+    end)
     assert.is_nil(inputs)
-    assert.not_nil(err)
-  end)
-end)
-
-describe("spec:inputs — simple inputs", function()
-  it("parses a single input with no properties", function()
-    local inputs, err = parse_yaml([[
-spec:
-  inputs:
-    environment:
-]])
-    assert.is_nil(err)
-    assert.eq(#inputs, 1)
-    assert.eq(inputs[1].name, "environment")
-    assert.eq(inputs[1].type, "string")
-    assert.eq(inputs[1].value, "")
+    assert.eq(err, "yq parse failed")
+    assert.eq(calls, 1)
   end)
 
-  it("parses multiple inputs in order", function()
-    local inputs, err = parse_yaml([[
-spec:
-  inputs:
-    environment:
-    version:
-    count:
-]])
-    assert.is_nil(err)
-    assert.eq(#inputs, 3)
-    assert.eq(inputs[1].name, "environment")
-    assert.eq(inputs[2].name, "version")
-    assert.eq(inputs[3].name, "count")
+  it("rejects structured values instead of stringifying Lua tables", function()
+    local inputs, err = discover({ { spec = { inputs = {
+      environment = { type = "string", default = { nested = "value" } },
+    } } } })
+    assert.is_nil(inputs)
+    assert.contains(err, "expected a scalar, got table")
+    assert.contains(err, "spec input 'environment' default")
   end)
 
-  it("skips comment lines without affecting state", function()
-    local inputs, err = parse_yaml([[
-# this is a comment
-spec:
-  inputs:
-    # another comment
-    environment:
-]])
-    assert.is_nil(err)
-    assert.eq(#inputs, 1)
-    assert.eq(inputs[1].name, "environment")
+  it("rejects an empty array where spec.inputs requires a map", function()
+    local inputs, err = discover({
+      { spec = { inputs = vim.json.decode("[]") } },
+    })
+    assert.is_nil(inputs)
+    assert.eq(err, "Unsupported YAML value for spec.inputs: expected a map")
   end)
 
-  it("skips blank lines without affecting state", function()
-    local inputs, err = parse_yaml([[
-spec:
-
-  inputs:
-
-    environment:
-
-]])
-    assert.is_nil(err)
-    assert.eq(#inputs, 1)
-    assert.eq(inputs[1].name, "environment")
-  end)
-end)
-
-describe("spec:inputs — default values", function()
-  it("sets value and default from unquoted default", function()
-    local inputs, err = parse_yaml([[
-spec:
-  inputs:
-    environment:
-      default: staging
-]])
-    assert.is_nil(err)
-    assert.eq(inputs[1].default, "staging")
-    assert.eq(inputs[1].value,   "staging")
-  end)
-
-  it("strips double quotes from default value", function()
-    local inputs, err = parse_yaml([[
-spec:
-  inputs:
-    environment:
-      default: "staging"
-]])
-    assert.is_nil(err)
-    assert.eq(inputs[1].default, "staging")
-    assert.eq(inputs[1].value,   "staging")
-  end)
-
-  it("strips single quotes from default value", function()
-    local inputs, err = parse_yaml([[
-spec:
-  inputs:
-    environment:
-      default: 'staging'
-]])
-    assert.is_nil(err)
-    assert.eq(inputs[1].default, "staging")
-    assert.eq(inputs[1].value,   "staging")
-  end)
-
-  it("sets value to empty string when no default is given", function()
-    local inputs, err = parse_yaml([[
-spec:
-  inputs:
-    environment:
-      description: some desc
-]])
-    assert.is_nil(err)
-    assert.eq(inputs[1].value, "")
-    assert.is_nil(inputs[1].default)
-  end)
-end)
-
-describe("spec:inputs — descriptions", function()
-  it("parses description", function()
-    local inputs, err = parse_yaml([[
-spec:
-  inputs:
-    environment:
-      description: Target deployment environment
-]])
-    assert.is_nil(err)
-    assert.eq(inputs[1].description, "Target deployment environment")
-  end)
-
-  it("strips quotes from description", function()
-    local inputs, err = parse_yaml([[
-spec:
-  inputs:
-    environment:
-      description: "Target deployment environment"
-]])
-    assert.is_nil(err)
-    assert.eq(inputs[1].description, "Target deployment environment")
-  end)
-end)
-
-describe("spec:inputs — types", function()
-  it("defaults to string type when type is absent", function()
-    local inputs, err = parse_yaml([[
-spec:
-  inputs:
-    environment:
-]])
-    assert.is_nil(err)
-    assert.eq(inputs[1].type, "string")
-  end)
-
-  it("parses number type", function()
-    local inputs, err = parse_yaml([[
-spec:
-  inputs:
-    count:
-      type: number
-      default: 42
-]])
-    assert.is_nil(err)
-    assert.eq(inputs[1].type,    "number")
-    assert.eq(inputs[1].default, "42")
-    assert.eq(inputs[1].value,   "42")
-  end)
-
-  it("parses boolean type", function()
-    local inputs, err = parse_yaml([[
-spec:
-  inputs:
-    verbose:
-      type: boolean
-      default: false
-]])
-    assert.is_nil(err)
-    assert.eq(inputs[1].type,    "boolean")
-    assert.eq(inputs[1].default, "false")
-  end)
-
-  it("parses float default for number type", function()
-    local inputs, err = parse_yaml([[
-spec:
-  inputs:
-    ratio:
-      type: number
-      default: 1.5
-]])
-    assert.is_nil(err)
-    assert.eq(inputs[1].type,    "number")
-    assert.eq(inputs[1].default, "1.5")
-    assert.eq(inputs[1].value,   "1.5")
-  end)
-end)
-
-describe("spec:inputs — block-style options", function()
-  it("parses a block options list", function()
-    local inputs, err = parse_yaml([[
-spec:
-  inputs:
-    environment:
-      options:
-        - dev
-        - staging
-        - prod
-]])
-    assert.is_nil(err)
-    assert.not_nil(inputs[1].options)
-    assert.eq(#inputs[1].options, 3)
-    assert.eq(inputs[1].options[1], "dev")
-    assert.eq(inputs[1].options[2], "staging")
-    assert.eq(inputs[1].options[3], "prod")
-  end)
-
-  it("strips quotes from option values", function()
-    local inputs, err = parse_yaml([[
-spec:
-  inputs:
-    environment:
-      options:
-        - "dev"
-        - 'staging'
-]])
-    assert.is_nil(err)
-    assert.eq(inputs[1].options[1], "dev")
-    assert.eq(inputs[1].options[2], "staging")
-  end)
-
-  it("options and other properties coexist on the same input", function()
-    local inputs, err = parse_yaml([[
-spec:
-  inputs:
-    environment:
-      description: Target environment
-      default: dev
-      options:
-        - dev
-        - staging
-]])
-    assert.is_nil(err)
-    assert.eq(inputs[1].description,    "Target environment")
-    assert.eq(inputs[1].default,        "dev")
-    assert.eq(#inputs[1].options,       2)
-  end)
-end)
-
-describe("spec:inputs — content outside spec block", function()
-  it("ignores top-level keys before spec:", function()
-    local inputs, err = parse_yaml([[
-image: alpine
-stages:
-  - build
-spec:
-  inputs:
-    environment:
-]])
-    assert.is_nil(err)
-    assert.eq(#inputs, 1)
-    assert.eq(inputs[1].name, "environment")
-  end)
-
-  it("stops collecting inputs when a new top-level key follows spec:", function()
-    local inputs, err = parse_yaml([[
-spec:
-  inputs:
-    environment:
-build-job:
-  script:
-    - echo hello
-]])
-    assert.is_nil(err)
-    assert.eq(#inputs, 1)
-    assert.eq(inputs[1].name, "environment")
-  end)
-end)
-
-describe("spec:inputs — unsupported constructs fail safely", function()
-  it("include: directive before spec: does not prevent input discovery", function()
-    local inputs, err = parse_yaml([[
-include:
-  - local: /path/to/file.yml
-
-spec:
-  inputs:
-    environment:
-]])
-    assert.is_nil(err)
-    assert.eq(#inputs, 1)
-    assert.eq(inputs[1].name, "environment")
-  end)
-
-  it("tab-indented input is not recognised and returns empty list safely", function()
-    -- Tabs produce indent=1 which matches no parser branch; no error is raised.
-    local inputs, err = parse_yaml("spec:\n  inputs:\n\tenvironment:\n")
-    assert.is_nil(err)
-    assert.eq(#inputs, 0)
-  end)
-
-  it("inline options form results in empty options list and does not error", function()
-    -- options: [dev, staging] sets in_options=true and options={} but the inline
-    -- value is not parsed; no indent-8 items follow, so options stays empty.
-    local inputs, err = parse_yaml([[
-spec:
-  inputs:
-    environment:
-      options: [dev, staging]
-]])
-    assert.is_nil(err)
-    assert.eq(#inputs, 1)
-    assert.not_nil(inputs[1].options)
-    assert.eq(#inputs[1].options, 0)
-  end)
-
-  it("block scalar description does not corrupt subsequent input parsing", function()
-    local inputs, err = parse_yaml([[
-spec:
-  inputs:
-    first:
-      description: |
-        this is a long description
-    second:
-]])
-    assert.is_nil(err)
-    assert.eq(#inputs, 2)
-    assert.eq(inputs[1].name, "first")
-    assert.is_nil(inputs[1].description)
-    assert.eq(inputs[2].name, "second")
-  end)
-
-  it("does not surface an alias as a default value", function()
-    local inputs, err = parse_yaml([[
-spec:
-  inputs:
-    environment:
-      default: *default_environment
-]])
-    assert.is_nil(err)
-    assert.eq(#inputs, 1)
-    assert.is_nil(inputs[1].default)
-    assert.eq(inputs[1].value, "")
-  end)
-
-  it("does not surface an alias as an option", function()
-    local inputs, err = parse_yaml([[
-spec:
-  inputs:
-    environment:
-      options:
-        - staging
-        - *default_environment
-]])
-    assert.is_nil(err)
-    assert.eq(#inputs[1].options, 1)
-    assert.eq(inputs[1].options[1], "staging")
+  it("rejects an options mapping where a list is required", function()
+    local inputs, err = discover({ { spec = { inputs = {
+      environment = {
+        default = "dev",
+        options = { dev = "Development", production = "Production" },
+      },
+    } } } })
+    assert.is_nil(inputs)
+    assert.contains(err, "spec input 'environment' options")
+    assert.contains(err, "expected a list")
   end)
 end)

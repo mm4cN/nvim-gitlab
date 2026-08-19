@@ -22,6 +22,13 @@ end
 
 function M.select(items, opts, callback)
   opts = opts or {}
+  local completed = false
+
+  local function complete(item)
+    if completed then return end
+    completed = true
+    if callback then callback(item) end
+  end
 
   local function format_item(item)
     if opts.format_item then
@@ -115,10 +122,15 @@ function M.select(items, opts, callback)
 
         telescope_actions.close(prompt_bufnr)
 
-        if item and callback then
-          callback(item)
-        end
+        complete(item)
       end)
+
+      for _, key in ipairs({ "<Esc>", "<C-c>" }) do
+        map({ "i", "n" }, key, function()
+          telescope_actions.close(prompt_bufnr)
+          complete(nil)
+        end, { desc = "Cancel" })
+      end
 
       for _, picker_action in ipairs(opts.actions or {}) do
         map("i", picker_action.key, function()
@@ -153,10 +165,7 @@ local function jobs_picker(opts, title, attach_mappings)
         { key = "<C-a>", label = "Artifacts" },
         { key = "<C-r>", label = "Re-run pipeline" },
       }
-      vim.list_extend(actions, {
-        { key = "r", label = "Refresh" },
-        { key = "<C-b>", label = "Back" },
-      })
+      table.insert(actions, { key = "<C-b>", label = "Back" })
       local lines = action_hints(actions)
       vim.list_extend(lines, {
         "Pipeline #" .. tostring(pipeline.id),
@@ -230,11 +239,6 @@ function M.show_pipeline(opts)
       opts.actions.rerun()
     end, { desc = "Re-run pipeline" })
 
-    map("n", "r", function()
-      telescope_actions.close(prompt_bufnr)
-      opts.actions.refresh()
-    end, { desc = "Refresh" })
-
     map({ "i", "n" }, "<C-b>", function()
       telescope_actions.close(prompt_bufnr)
       if opts.on_back then opts.on_back() end
@@ -257,7 +261,6 @@ function M.show_job(opts)
         { key = "<C-r>", label = "Retry job" },
         { key = "<C-a>", label = "Artifacts" },
         { key = "<C-p>", label = "Play job" },
-        { key = "r", label = "Refresh" },
         { key = "<C-b>", label = "Back" },
       })
       vim.list_extend(lines, {
@@ -323,11 +326,6 @@ function M.show_job(opts)
         telescope_actions.close(prompt_bufnr)
         opts.actions.play()
       end, { desc = "Play job" })
-
-      map("n", "r", function()
-        telescope_actions.close(prompt_bufnr)
-        opts.actions.refresh()
-      end, { desc = "Refresh" })
 
       map({ "i", "n" }, "<C-b>", function()
         telescope_actions.close(prompt_bufnr)

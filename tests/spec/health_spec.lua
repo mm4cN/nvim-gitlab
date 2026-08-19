@@ -7,6 +7,7 @@ local auth = require("gitlab.auth")
 local config = require("gitlab.config")
 local git = require("gitlab.git")
 local health = require("gitlab.health")
+local yq = require("gitlab.ci.yq")
 
 describe("dependency health checks", function()
   it("reports required NUI, configured Telescope fallback, and optional token", function()
@@ -22,6 +23,7 @@ describe("dependency health checks", function()
     local old_picker = config.options.picker
     local old_token = auth.token
     local old_root = git.root
+    local old_yq_check = yq.check
     local modules = { "nui.input", "gitlab.ui.pickers.telescope" }
     local old_loaded = {}
     local old_preload = {}
@@ -43,10 +45,15 @@ describe("dependency health checks", function()
     config.options.picker = "telescope"
     auth.token = function() return nil, "GITLAB_TOKEN is not set" end
     git.root = function() return nil, "not in repository" end
+    yq.check = function(opts)
+      assert.eq(opts.force, true)
+      return nil, "yq YAML-to-JSON multi-document capability is unavailable"
+    end
 
     local ok, err = pcall(function()
       health.check()
       assert.contains(table.concat(messages.error, "\n"), "nui.nvim not found (required)")
+      assert.contains(table.concat(messages.error, "\n"), "multi-document capability is unavailable")
       assert.contains(table.concat(messages.warn, "\n"), "using vim.ui fallback")
       assert.contains(table.concat(messages.info, "\n"), "optional; only required by :GitlabAuth")
     end)
@@ -55,6 +62,7 @@ describe("dependency health checks", function()
     config.options.picker = old_picker
     auth.token = old_token
     git.root = old_root
+    yq.check = old_yq_check
     for _, name in ipairs(modules) do
       package.loaded[name] = old_loaded[name]
       package.preload[name] = old_preload[name]

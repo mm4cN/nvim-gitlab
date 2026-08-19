@@ -2,6 +2,7 @@ local auth = require("gitlab.auth")
 local config = require("gitlab.config")
 local git = require("gitlab.git")
 local glab = require("gitlab.glab")
+local yq = require("gitlab.ci.yq")
 local buffer = require("gitlab.ui.buffer")
 
 local M = {}
@@ -46,6 +47,13 @@ function M.run()
   else
     table.insert(lines, fail("nui.nvim", "required dependency not found"))
     table.insert(lines, "  Install MunifTanjim/nui.nvim")
+  end
+
+  local yq_ok, yq_err = yq.check({ force = true })
+  table.insert(lines, yq_ok and ok("yq", "YAML-to-JSON capabilities available for CI discovery")
+    or fail("yq", yq_err))
+  if not yq_ok then
+    table.insert(lines, "  Install a compatible yq YAML-to-JSON transcoder and ensure it is on PATH")
   end
 
   if config.options.picker == "telescope" then
