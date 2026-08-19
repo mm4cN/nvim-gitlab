@@ -174,6 +174,23 @@ describe("api.pipeline_inputs", function()
     assert.eq(raw_path, "projects/:id/repository/files/.gitlab-ci.yml/raw?ref=main")
     assert.eq(lint_path, "projects/:id/ci/lint?content_ref=main")
   end)
+
+  it("URL-encodes '&' and '=' in ref so they cannot be mistaken for query separators", function()
+    local raw_path, lint_path = capture_both_paths(function()
+      api.pipeline_inputs({ project = "ns/proj", ref = "feature/fix & cleanup=1" })
+    end)
+    local expected_ref = vim.uri_encode("feature/fix & cleanup=1", "rfc2396")
+    assert.eq(raw_path, "projects/ns%2Fproj/repository/files/.gitlab-ci.yml/raw?ref=" .. expected_ref)
+    assert.eq(lint_path, "projects/ns%2Fproj/ci/lint?content_ref=" .. expected_ref)
+
+    local raw_query = raw_path:match("%?ref=(.*)$")
+    assert.is_nil(raw_query:find("&", 1, true))
+    assert.is_nil(raw_query:find("=", 1, true))
+
+    local lint_query = lint_path:match("%?content_ref=(.*)$")
+    assert.is_nil(lint_query:find("&", 1, true))
+    assert.is_nil(lint_query:find("=", 1, true))
+  end)
 end)
 
 describe("api.branches", function()

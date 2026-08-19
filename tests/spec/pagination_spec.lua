@@ -61,13 +61,12 @@ describe("api.pipelines — query construction", function()
     assert.eq(path, "projects/:id/pipelines?per_page=20")
   end)
 
-  it("preserves branch names with slashes in ref query", function()
-    -- Slashes in branch names are kept verbatim in the query string;
-    -- the API accepts them as-is without percent-encoding.
+  it("percent-encodes slashes in branch names in ref query", function()
+    -- rfc2396 encoding percent-encodes '/' along with other reserved characters.
     local path = capture_path(function()
       api.pipelines({ ref = "feature/my-branch" })
     end)
-    assert.eq(path, "projects/:id/pipelines?per_page=20&ref=feature/my-branch")
+    assert.eq(path, "projects/:id/pipelines?per_page=20&ref=feature%2fmy-branch")
   end)
 
   it("combines per_page, page, and ref", function()
@@ -75,6 +74,17 @@ describe("api.pipelines — query construction", function()
       api.pipelines({ per_page = 10, page = 3, ref = "main" })
     end)
     assert.eq(path, "projects/:id/pipelines?per_page=10&page=3&ref=main")
+  end)
+
+  it("URL-encodes '&' and '=' in ref so they cannot be mistaken for query separators", function()
+    local path = capture_path(function()
+      api.pipelines({ ref = "feature/fix & cleanup=1" })
+    end)
+    local expected_ref = vim.uri_encode("feature/fix & cleanup=1", "rfc2396")
+    assert.eq(path, "projects/:id/pipelines?per_page=20&ref=" .. expected_ref)
+    local query = path:match("&ref=(.*)$")
+    assert.is_nil(query:find("&", 1, true))
+    assert.is_nil(query:find("=", 1, true))
   end)
 end)
 
@@ -105,6 +115,46 @@ describe("api.latest_pipeline — query construction", function()
       api.latest_pipeline({ ref = "" })
     end)
     assert.eq(path, "projects/:id/pipelines?per_page=1")
+  end)
+
+  it("URL-encodes '&' and '=' in ref so they cannot be mistaken for query separators", function()
+    local path = capture_path(function()
+      api.latest_pipeline({ ref = "feature/fix & cleanup=1" })
+    end)
+    local expected_ref = vim.uri_encode("feature/fix & cleanup=1", "rfc2396")
+    assert.eq(path, "projects/:id/pipelines?per_page=1&ref=" .. expected_ref)
+    local query = path:match("&ref=(.*)$")
+    assert.is_nil(query:find("&", 1, true))
+    assert.is_nil(query:find("=", 1, true))
+  end)
+end)
+
+describe("api.latest_pipeline_async — query construction", function()
+  local function capture_path_async(fn)
+    local path_seen
+    with_mock(glab, "run_json_async", function(args, _opts, callback)
+      path_seen = args[2]
+      callback({ { id = 1 } }, nil)
+    end, fn)
+    return path_seen
+  end
+
+  it("appends &ref when ref is present", function()
+    local path = capture_path_async(function()
+      api.latest_pipeline_async({ ref = "main" }, function() end)
+    end)
+    assert.eq(path, "projects/:id/pipelines?per_page=1&ref=main")
+  end)
+
+  it("URL-encodes '&' and '=' in ref so they cannot be mistaken for query separators", function()
+    local path = capture_path_async(function()
+      api.latest_pipeline_async({ ref = "feature/fix & cleanup=1" }, function() end)
+    end)
+    local expected_ref = vim.uri_encode("feature/fix & cleanup=1", "rfc2396")
+    assert.eq(path, "projects/:id/pipelines?per_page=1&ref=" .. expected_ref)
+    local query = path:match("&ref=(.*)$")
+    assert.is_nil(query:find("&", 1, true))
+    assert.is_nil(query:find("=", 1, true))
   end)
 end)
 

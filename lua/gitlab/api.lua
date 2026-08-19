@@ -48,7 +48,7 @@ function M.latest_pipeline(opts)
   local query = "per_page=1"
 
   if ref and ref ~= "" then
-    query = query .. "&ref=" .. ref
+    query = query .. "&ref=" .. vim.uri_encode(ref, "rfc2396")
   end
 
   local pipelines, err = M.get(project_prefix(opts) .. "/pipelines?" .. query, {
@@ -112,7 +112,7 @@ function M.pipelines(opts)
   end
 
   if opts.ref and opts.ref ~= "" then
-    query = query .. "&ref=" .. vim.uri_encode(opts.ref)
+    query = query .. "&ref=" .. vim.uri_encode(opts.ref, "rfc2396")
   end
 
   return M.get(project_prefix(opts) .. "/pipelines?" .. query, {
@@ -212,7 +212,7 @@ function M.latest_pipeline_async(opts, callback)
   local query = "per_page=1"
 
   if ref and ref ~= "" then
-    query = query .. "&ref=" .. ref
+    query = query .. "&ref=" .. vim.uri_encode(ref, "rfc2396")
   end
 
   glab.run_json_async({ "api", project_prefix(opts) .. "/pipelines?" .. query }, {
@@ -304,7 +304,7 @@ function M.pipeline_inputs(opts)
   end
 
   -- Raw file is required for spec:inputs — ci/lint strips the spec: block from merged_yaml.
-  local raw_path = project_prefix(opts) .. "/repository/files/.gitlab-ci.yml/raw?ref=" .. vim.uri_encode(opts.ref)
+  local raw_path = project_prefix(opts) .. "/repository/files/.gitlab-ci.yml/raw?ref=" .. vim.uri_encode(opts.ref, "rfc2396")
   local content, err = glab.run({ "api", raw_path }, { cwd = opts.cwd })
 
   if not content or content == "" then
@@ -313,7 +313,7 @@ function M.pipeline_inputs(opts)
 
   -- ci/lint merged_yaml expands include: directives for legacy described variables.
   -- Degrade gracefully if this secondary fetch fails.
-  local lint_path = project_prefix(opts) .. "/ci/lint?content_ref=" .. vim.uri_encode(opts.ref)
+  local lint_path = project_prefix(opts) .. "/ci/lint?content_ref=" .. vim.uri_encode(opts.ref, "rfc2396")
   local lint_result, _ = M.get(lint_path, { cwd = opts.cwd })
   local merged = (lint_result and lint_result.merged_yaml ~= "" and lint_result.merged_yaml) or content
 
