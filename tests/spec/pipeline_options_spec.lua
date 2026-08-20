@@ -102,6 +102,77 @@ describe("pipeline runner mixed focus navigation", function()
       assert.eq(component.mappings["n<S-Tab>"], true)
     end
   end)
+
+  it("auto-scrolls before focusing the next or previous off-screen field", function()
+    local function fake()
+      local component = { mappings = {} }
+      function component:map(mode, key, handler)
+        self.mappings[mode .. key] = handler
+      end
+      return component
+    end
+
+    local components = { fake(), fake(), fake() }
+    local ensured = {}
+    local navigation = {
+      focus_index = 1,
+      ensure_visible = function(index) table.insert(ensured, index) end,
+    }
+    pipeline_runner._configure_tab_navigation(components, navigation)
+    components[1].mappings["n<Tab>"]()
+    assert.eq(navigation.focus_index, 2)
+    assert.eq(ensured[1], 2)
+    components[2].mappings["n<S-Tab>"]()
+    assert.eq(navigation.focus_index, 1)
+    assert.eq(ensured[2], 1)
+  end)
+end)
+
+describe("pipeline runner bounded viewport", function()
+  local function items(count, size)
+    local result = {}
+    for _ = 1, count do table.insert(result, { size = size }) end
+    return result
+  end
+
+  it("keeps a fixed outer height while arbitrarily many fields are paged", function()
+    local spec = pipeline_runner._runner_layout_spec()
+    local fields = items(100, 3)
+    local first, last = pipeline_runner._viewport_range(fields, 1, spec.viewport_height)
+    assert.eq(spec.viewport_height, pipeline_runner._form_viewport_height)
+    assert.eq(spec.height, spec.viewport_height + 2)
+    assert.eq(first, 1)
+    assert.eq(last < #fields, true)
+    assert.eq(spec.legend_focusable, false)
+    assert.eq(spec.legend_width < spec.width, true)
+    assert.eq(spec.form_border, "rounded")
+    assert.eq(spec.legend_border, "rounded")
+  end)
+
+  it("brings a focused component into view in either direction", function()
+    local fields = items(20, 3)
+    local height = 9
+    local down = pipeline_runner._viewport_offset_for_focus(fields, 1, height, 10)
+    local first, last = pipeline_runner._viewport_range(fields, down, height)
+    assert.eq(10 >= first and 10 <= last, true)
+    assert.eq(pipeline_runner._viewport_offset_for_focus(fields, down, height, 2), 2)
+  end)
+
+  it("renders a proportional scrollbar that follows viewport position", function()
+    local fields = items(20, 3)
+    local top = pipeline_runner._viewport_scrollbar_lines(fields, 1, 9)
+    local middle = pipeline_runner._viewport_scrollbar_lines(fields, 7, 9)
+    local bottom = pipeline_runner._viewport_scrollbar_lines(fields, 18, 9)
+    assert.eq(#top, 9)
+    assert.eq(top[1], "█")
+    assert.eq(middle[1], "│")
+    assert.eq(bottom[9], "█")
+  end)
+
+  it("hides the scrollbar when the whole form fits", function()
+    local lines = pipeline_runner._viewport_scrollbar_lines(items(2, 3), 1, 9)
+    assert.eq(table.concat(lines, ""), string.rep(" ", 9))
+  end)
 end)
 
 describe("pipeline runner ref picker lifecycle", function()
@@ -170,16 +241,87 @@ end)
 describe("pipeline runner hints", function()
   it("renders concise vertical keybindings", function()
     local lines = pipeline_runner._runner_hint_lines()
-    assert.eq(#lines, 10)
-    assert.contains(lines[1] .. lines[2], "<Tab>")
+    assert.eq(#lines, 13)
     local text = table.concat(lines, "\n")
-    assert.eq(text:find("Refresh", 1, true), nil)
-    assert.contains(text, "Remove added variable")
-    for _, line in ipairs(lines) do
-      if line:find("Refresh", 1, true) then
-        assert.eq(line:find("Run", 1, true), nil)
-      end
+    assert.contains(text, "Keybindings")
+    assert.contains(text, "C-s       Run pipeline")
+    assert.contains(text, "C-r       Pick ref")
+    assert.eq(text:find("<CR>", 1, true), nil)
+  end)
+end)
+
+describe("pipeline runner component mappings", function()
+  local function fake(kind)
+    local component = { _gitlab_component_kind = kind, mappings = {} }
+    function component:map(mode, key, handler)
+      self.mappings[mode .. key] = handler
     end
+    return component
+  end
+
+  it("maps global Run on Project, Ref, input, and menu without mapping Enter", function()
+    local components = { fake("input"), fake("input"), fake("input"), fake("menu") }
+    local runs = 0
+    pipeline_runner._configure_component_mappings(components, {
+      run = function() runs = runs + 1 end,
+      add_variable = function() end,
+      close = function() end,
+    })
+    for _, component in ipairs(components) do
+      assert.not_nil(component.mappings["i<C-s>"])
+      assert.not_nil(component.mappings["n<C-s>"])
+      assert.is_nil(component.mappings["i<CR>"])
+      assert.is_nil(component.mappings["n<CR>"])
+      assert.is_nil(component.mappings["i<PageDown>"])
+      assert.is_nil(component.mappings["n<PageUp>"])
+    end
+    components[1].mappings["i<C-s>"]()
+    components[2].mappings["n<C-s>"]()
+    assert.eq(runs, 2)
+  end)
+
+  it("submits a Project-and-Ref-only pipeline through the global mapping", function()
+    local project = fake("input")
+    local ref = fake("input")
+    local triggered = false
+    local state = {
+      project = "ns/project", ref = "main", root = "/repo",
+      fields = {}, yaml_vars = {}, variables = {},
+    }
+    local run = function()
+      pipeline_runner._submit_pipeline(
+        state,
+        function() end,
+        { info = function() end, error = function() end },
+        function() triggered = true return {}, nil end
+      )
+    end
+    pipeline_runner._configure_component_mappings({ project, ref }, {
+      run = run, add_variable = function() end, close = function() end,
+    })
+    project.mappings["i<C-s>"]()
+    assert.eq(triggered, true)
+  end)
+
+  it("keeps option menus on j/k and arrow selection keys", function()
+    local field = { name = "environment", value = "dev", options = { "dev", "prod" } }
+    local component = pipeline_runner._make_field_component(field, "environment")
+    assert.eq(component.options.keymap.focus_next[1], "j")
+    assert.eq(component.options.keymap.focus_next[2], "<Down>")
+    assert.eq(component.options.keymap.focus_prev[1], "k")
+    assert.eq(component.options.keymap.focus_prev[2], "<Up>")
+  end)
+end)
+
+describe("pipeline runner unbounded discovery", function()
+  it("keeps all discovered spec inputs", function()
+    local discovered = {}
+    for i = 1, 20 do table.insert(discovered, { name = "field" .. i, default = tostring(i) }) end
+    with_mock(api, "pipeline_inputs", function() return discovered, nil, {} end, function()
+      local state = { project = "ns/proj", ref = "main", fields = {}, yaml_vars = {}, yaml_vars_key = "" }
+      pipeline_runner._fetch_inputs(state)
+      assert.eq(#state.fields, 20)
+    end)
   end)
 end)
 

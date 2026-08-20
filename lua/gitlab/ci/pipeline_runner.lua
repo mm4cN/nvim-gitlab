@@ -11,20 +11,37 @@ local picker = require("gitlab.ui.picker")
 
 local M = {}
 
-local MAX_DYNAMIC_FIELDS = 7
-local MAX_VARIABLES = 7 -- UI layout limit, not a GitLab restriction
+local FORM_VIEWPORT_HEIGHT = 22
+local RUNNER_WIDTH = 94
+local LEGEND_WIDTH = 31
+local FRAME_HEIGHT = FORM_VIEWPORT_HEIGHT + 2
+
+local function runner_layout_spec()
+  return {
+    width = RUNNER_WIDTH,
+    height = FRAME_HEIGHT,
+    viewport_height = FORM_VIEWPORT_HEIGHT,
+    legend_width = LEGEND_WIDTH,
+    legend_focusable = false,
+    form_border = "rounded",
+    legend_border = "rounded",
+  }
+end
 
 local function runner_hint_lines()
   return {
+    "  Keybindings",
     "",
-    "  <Tab>    Next field",
-    "  <S-Tab>  Previous field",
-    "  j / k    Choose option",
-    "  <C-r>    Pick ref (Ref field)",
-    "  a        Add variable",
-    "  d        Remove added variable",
-    "  <CR>     Run",
-    "  q / <Esc>  Close",
+    "  Tab       Next field",
+    "  S-Tab     Previous field",
+    "",
+    "  j / k     Choose option",
+    "  C-r       Pick ref",
+    "  a         Add variable",
+    "  d         Remove variable",
+    "",
+    "  C-s       Run pipeline",
+    "  q / Esc   Close",
     "",
   }
 end
@@ -170,25 +187,115 @@ local function make_field_component(field, label)
   return menu, height + 2, entry
 end
 
-local function configure_tab_navigation(tab_order)
-  for i, component in ipairs(tab_order) do
-    local next_idx = (i % #tab_order) + 1
-    local prev_idx = ((i - 2) % #tab_order) + 1
+local function configure_tab_navigation(tab_order, navigation)
+  navigation = navigation or { focus_index = 1 }
 
+  local function move_to(index)
+    navigation.focus_index = index
+    if navigation.ensure_visible then
+      navigation.ensure_visible(index)
+    end
+    vim.schedule(function() focus(tab_order[index]) end)
+  end
+
+  for _, component in ipairs(tab_order) do
     component:map("i", "<Tab>", function()
       vim.cmd("stopinsert")
-      vim.schedule(function() focus(tab_order[next_idx]) end)
+      move_to((navigation.focus_index % #tab_order) + 1)
     end, { noremap = true })
     component:map("n", "<Tab>", function()
-      vim.schedule(function() focus(tab_order[next_idx]) end)
+      move_to((navigation.focus_index % #tab_order) + 1)
     end, { noremap = true })
     component:map("i", "<S-Tab>", function()
       vim.cmd("stopinsert")
-      vim.schedule(function() focus(tab_order[prev_idx]) end)
+      move_to(((navigation.focus_index - 2) % #tab_order) + 1)
     end, { noremap = true })
     component:map("n", "<S-Tab>", function()
-      vim.schedule(function() focus(tab_order[prev_idx]) end)
+      move_to(((navigation.focus_index - 2) % #tab_order) + 1)
     end, { noremap = true })
+  end
+end
+
+local function viewport_range(items, offset, height)
+  offset = math.max(1, math.min(offset or 1, #items))
+  local used = 0
+  local last = offset - 1
+  for i = offset, #items do
+    local size = items[i].size
+    if used > 0 and used + size > height then
+      break
+    end
+    used = used + math.min(size, height)
+    last = i
+    if used >= height then
+      break
+    end
+  end
+  return offset, last
+end
+
+local function viewport_offset_for_focus(items, offset, height, focus_index)
+  local first, last = viewport_range(items, offset, height)
+  if focus_index >= first and focus_index <= last then
+    return first
+  end
+  if focus_index < first then
+    return focus_index
+  end
+
+  local new_offset = focus_index
+  local used = items[focus_index].size
+  while new_offset > 1 and used + items[new_offset - 1].size <= height do
+    new_offset = new_offset - 1
+    used = used + items[new_offset].size
+  end
+  return new_offset
+end
+
+local function viewport_scrollbar_lines(items, offset, height)
+  local lines = {}
+  for i = 1, height do
+    lines[i] = " "
+  end
+
+  local total = 0
+  for _, item in ipairs(items) do
+    total = total + item.size
+  end
+  if total <= height then
+    return lines
+  end
+
+  local first, last = viewport_range(items, offset, height)
+  local before = 0
+  for i = 1, first - 1 do
+    before = before + items[i].size
+  end
+  local visible = 0
+  for i = first, last do
+    visible = visible + items[i].size
+  end
+
+  local thumb_size = math.max(1, math.floor(height * math.min(visible, height) / total + 0.5))
+  local scrollable = math.max(1, total - math.min(visible, height))
+  local thumb_start = 1 + math.floor((height - thumb_size) * before / scrollable + 0.5)
+  thumb_start = math.min(thumb_start, height - thumb_size + 1)
+
+  for i = 1, height do
+    lines[i] = i >= thumb_start and i < thumb_start + thumb_size and "█" or "│"
+  end
+  return lines
+end
+
+local function configure_component_mappings(tab_order, actions)
+  for _, component in ipairs(tab_order) do
+    component:map("i", "<C-s>", actions.run, { noremap = true })
+    component:map("n", "<C-s>", actions.run, { noremap = true })
+
+    component:map("n", "a", actions.add_variable, { noremap = true })
+    component:map("i", "<Esc>", function() vim.cmd("stopinsert") end, { noremap = true })
+    component:map("n", "q", actions.close, { noremap = true })
+    component:map("n", "<Esc>", actions.close, { noremap = true })
   end
 end
 
@@ -295,10 +402,7 @@ local function fetch_inputs(state)
     end
 
     state.fields = {}
-    for i, input in ipairs(inputs) do
-      if i > MAX_DYNAMIC_FIELDS then
-        break
-      end
+    for _, input in ipairs(inputs) do
       table.insert(state.fields, {
         name = input.name,
         description = input.description or "",
@@ -401,61 +505,134 @@ local function build_and_mount(state, on_run, on_pick_ref, on_add_variable, on_r
   end
 
   local hints_popup = Popup({
-    border = { style = "none" },
+    border = { style = "rounded" },
     win_options = { winhighlight = "Normal:Normal" },
     buf_options = { modifiable = false, readonly = false },
+    focusable = false,
   })
 
-  local function count_descs(entries)
-    local n = 0
-    for _, e in ipairs(entries) do if e.desc then n = n + 1 end end
-    return n
-  end
+  local form_frame = Popup({
+    border = {
+      style = "rounded",
+      text = { top = " Pipeline ", top_align = "left" },
+    },
+    focusable = false,
+  })
 
-  local n_vars = #var_inputs
-  local n_descs = count_descs(field_entries) + count_descs(yaml_var_entries)
-  local height = 2 * 3 + n_vars * 3 + n_descs + hints_size
-  for _, entries in ipairs({ field_entries, yaml_var_entries }) do
-    for _, entry in ipairs(entries) do height = height + entry.size end
-  end
+  local scrollbar = Popup({
+    border = { style = "none" },
+    win_options = { winhighlight = "Normal:Comment" },
+    buf_options = { modifiable = false, readonly = false },
+    focusable = false,
+  })
 
-  local boxes = {
-    Layout.Box(project_input, { size = 3 }),
-    Layout.Box(ref_input, { size = 3 }),
-  }
-  local function add_entries(entries)
-    for _, e in ipairs(entries) do
-      table.insert(boxes, Layout.Box(e.input, { size = e.size }))
-      if e.desc then
-        table.insert(boxes, Layout.Box(e.desc, { size = 1 }))
-      end
+  -- A viewport item can contain a focusable component and its non-focusable
+  -- description. Layout:update mounts only the currently visible item boxes.
+  local viewport_items = {}
+  local function add_viewport_item(component, size, desc)
+    local boxes = { Layout.Box(component, { size = size }) }
+    local total = size
+    if desc then
+      table.insert(boxes, Layout.Box(desc, { size = 1 }))
+      total = total + 1
     end
+    table.insert(viewport_items, {
+      component = component,
+      size = total,
+      box = Layout.Box(boxes, { dir = "col", size = total }),
+    })
   end
-  add_entries(field_entries)
-  add_entries(yaml_var_entries)
-  for _, vi in ipairs(var_inputs) do
-    table.insert(boxes, Layout.Box(vi, { size = 3 }))
-  end
-  table.insert(boxes, Layout.Box(hints_popup, { size = hints_size }))
 
-  local layout = Layout(
-    { position = "50%", size = { width = 60, height = height } },
-    Layout.Box(boxes, { dir = "col" })
-  )
-
-  layout:mount()
-
+  add_viewport_item(project_input, 3)
+  add_viewport_item(ref_input, 3)
   for _, entries in ipairs({ field_entries, yaml_var_entries }) do
     for _, entry in ipairs(entries) do
-      if entry.menu_entry then
-        local selected = entry.menu_entry.selected_index
-        if selected and entry.input.winid and vim.api.nvim_win_is_valid(entry.input.winid) then
-          vim.api.nvim_win_set_cursor(entry.input.winid, { selected, 0 })
-        end
-        entry.menu_entry.initializing = false
+      add_viewport_item(entry.input, entry.size, entry.desc)
+    end
+  end
+  for _, input in ipairs(var_inputs) do
+    add_viewport_item(input, 3)
+  end
+
+  local viewport = { offset = 1, focus_index = 1 }
+  local layout
+  local form_layout
+  local sync_menu_positions
+  local function form_layout_box()
+    local first, last = viewport_range(viewport_items, viewport.offset, FORM_VIEWPORT_HEIGHT)
+    local visible = {}
+    for i = first, last do
+      table.insert(visible, viewport_items[i].box)
+    end
+    return Layout.Box({
+      Layout.Box(visible, { dir = "col", grow = 1 }),
+      Layout.Box(scrollbar, { size = 1 }),
+    }, { dir = "row" })
+  end
+
+  local function update_scrollbar()
+    local lines = viewport_scrollbar_lines(viewport_items, viewport.offset, FORM_VIEWPORT_HEIGHT)
+    vim.bo[scrollbar.bufnr].modifiable = true
+    vim.api.nvim_buf_set_lines(scrollbar.bufnr, 0, -1, false, lines)
+    vim.bo[scrollbar.bufnr].modifiable = false
+  end
+
+  layout = Layout(
+    { position = "50%", size = { width = RUNNER_WIDTH, height = FRAME_HEIGHT } },
+    Layout.Box({
+      Layout.Box(form_frame, { size = { width = RUNNER_WIDTH - LEGEND_WIDTH, height = FRAME_HEIGHT } }),
+      Layout.Box(hints_popup, { size = { width = LEGEND_WIDTH, height = FRAME_HEIGHT } }),
+    }, { dir = "row" })
+  )
+
+  function viewport.render()
+    if form_layout and form_layout.winid then
+      form_layout:update(form_layout_box())
+      update_scrollbar()
+      if sync_menu_positions then
+        sync_menu_positions()
       end
     end
   end
+
+  function viewport.ensure_visible(index)
+    local offset = viewport_offset_for_focus(viewport_items, viewport.offset, FORM_VIEWPORT_HEIGHT, index)
+    if offset ~= viewport.offset then
+      viewport.offset = offset
+      viewport.render()
+    end
+  end
+
+  layout:mount()
+  form_layout = Layout(form_frame, form_layout_box())
+  form_layout:mount()
+  update_scrollbar()
+
+  local layout_unmount = layout.unmount
+  function layout:unmount()
+    if form_layout then
+      form_layout:unmount()
+      form_layout = nil
+    end
+    layout_unmount(self)
+  end
+
+  sync_menu_positions = function()
+    for _, entries in ipairs({ field_entries, yaml_var_entries }) do
+      for _, entry in ipairs(entries) do
+        if entry.menu_entry then
+          local selected = entry.menu_entry.selected_index
+          if entry.input.winid and vim.api.nvim_win_is_valid(entry.input.winid) then
+            if selected then
+              vim.api.nvim_win_set_cursor(entry.input.winid, { selected, 0 })
+            end
+            entry.menu_entry.initializing = false
+          end
+        end
+      end
+    end
+  end
+  sync_menu_positions()
 
   -- Populate hints and description text after mount.
   vim.bo[hints_popup.bufnr].modifiable = true
@@ -474,39 +651,19 @@ local function build_and_mount(state, on_run, on_pick_ref, on_add_variable, on_r
   populate_descs(field_entries)
   populate_descs(yaml_var_entries)
 
-  -- Tab order contains only focusable inputs; desc popups are intentionally excluded.
-  local tab_order = { project_input, ref_input }
-  local function add_inputs_to_tab(entries)
-    for _, e in ipairs(entries) do
-      table.insert(tab_order, e.input)
-    end
-  end
-  add_inputs_to_tab(field_entries)
-  add_inputs_to_tab(yaml_var_entries)
-  for _, vi in ipairs(var_inputs) do
-    table.insert(tab_order, vi)
+  -- Viewport items map one-to-one to focusable components. Descriptions and
+  -- the legend are deliberately absent from this order.
+  local tab_order = {}
+  for _, item in ipairs(viewport_items) do
+    table.insert(tab_order, item.component)
   end
 
-  -- project_input and ref_input commit on Enter (via on_submit); all other fields run the pipeline.
-  local commit_components = { [project_input] = true, [ref_input] = true }
-
-  configure_tab_navigation(tab_order)
-
-  for _, component in ipairs(tab_order) do
-    if not commit_components[component] then
-      component:map("i", "<CR>", on_run, { noremap = true })
-      component:map("n", "<CR>", on_run, { noremap = true })
-    end
-
-    component:map("n", "a", on_add_variable, { noremap = true })
-
-    component:map("i", "<Esc>", function()
-      vim.cmd("stopinsert")
-    end, { noremap = true })
-
-    component:map("n", "q", on_close, { noremap = true })
-    component:map("n", "<Esc>", on_close, { noremap = true })
-  end
+  configure_tab_navigation(tab_order, viewport)
+  configure_component_mappings(tab_order, {
+    run = on_run,
+    add_variable = on_add_variable,
+    close = on_close,
+  })
 
   for index, component in ipairs(var_inputs) do
     component:map("n", "d", function()
@@ -521,7 +678,7 @@ local function build_and_mount(state, on_run, on_pick_ref, on_add_variable, on_r
 
   ref_input:map("n", "<C-r>", on_pick_ref, { noremap = true })
 
-  return layout, project_input, ref_input, var_inputs
+  return layout, project_input, ref_input, var_inputs, viewport
 end
 
 function M.open()
@@ -583,10 +740,6 @@ function M.open()
   end
 
   add_variable = function()
-    if #state.variables >= MAX_VARIABLES then
-      notification.warn("Maximum number of variables reached (" .. MAX_VARIABLES .. ")")
-      return
-    end
     table.insert(state.variables, { key = "", value = "" })
     build({ focus_last_var = true })
   end
@@ -623,7 +776,7 @@ function M.open()
       current_layout = nil
     end
 
-    local layout, project_input, ref_input, var_inputs =
+    local layout, project_input, ref_input, var_inputs, viewport =
       build_and_mount(state, run, pick_ref, add_variable, remove_variable, close, on_submit_project, on_submit_ref)
     current_layout = layout
 
@@ -631,15 +784,21 @@ function M.open()
   -- This ensures startinsert! lands in a fully-created window, giving the user
   -- immediate insert mode without needing to press `i`.
   vim.schedule(function()
+    local target = project_input
+    local target_index = 1
     if opts.focus_variable_index and var_inputs and var_inputs[opts.focus_variable_index] then
-      focus(var_inputs[opts.focus_variable_index])
+      target = var_inputs[opts.focus_variable_index]
+      target_index = 2 + #state.fields + #state.yaml_vars + opts.focus_variable_index
     elseif opts.focus_last_var and var_inputs and #var_inputs > 0 then
-      focus(var_inputs[#var_inputs])
+      target = var_inputs[#var_inputs]
+      target_index = 2 + #state.fields + #state.yaml_vars + #var_inputs
     elseif opts.focus_ref then
-      focus(ref_input)
-    else
-      focus(project_input)
+      target = ref_input
+      target_index = 2
     end
+    viewport.focus_index = target_index
+    viewport.ensure_visible(target_index)
+    focus(target)
   end)
   end
 
@@ -659,6 +818,12 @@ M._validate_option_values = validate_option_values
 M._collect_inputs = collect_inputs
 M._make_field_component = make_field_component
 M._configure_tab_navigation = configure_tab_navigation
+M._viewport_range = viewport_range
+M._viewport_offset_for_focus = viewport_offset_for_focus
+M._viewport_scrollbar_lines = viewport_scrollbar_lines
+M._form_viewport_height = FORM_VIEWPORT_HEIGHT
+M._configure_component_mappings = configure_component_mappings
+M._runner_layout_spec = runner_layout_spec
 M._open_ref_picker = open_ref_picker
 M._runner_hint_lines = runner_hint_lines
 M._remove_added_variable = remove_added_variable
