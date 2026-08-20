@@ -16,6 +16,7 @@ local job_details = require("gitlab.ci.job_details")
 local jobs = require("gitlab.ci.jobs")
 local log_buffer = require("gitlab.ci.log_buffer")
 local picker = require("gitlab.ui.picker")
+local pipeline_watch = require("gitlab.ci.pipeline_watch")
 local pipelines = require("gitlab.ci.pipelines")
 local process = require("gitlab.util.process")
 local project_picker = require("gitlab.ui.project_picker")
@@ -120,11 +121,20 @@ describe("pipeline and job workflows", function()
         return {}, nil
       end },
       { picker, "show_pipeline", function(opts) shown = opts end },
+      { pipeline_watch, "watch", function() return true end },
     }, function()
       details.show()
       assert.contains(picker_calls[1].opts.prompt, "current/project")
-      assert.eq(picker_calls[1].opts.actions[2].key, "<C-p>")
-      picker_calls[1].opts.actions[2].callback(current_pipeline)
+      -- Find the project picker action (it has key <C-p>)
+      local project_action
+      for _, action in ipairs(picker_calls[1].opts.actions) do
+        if action.key == "<C-p>" then
+          project_action = action
+          break
+        end
+      end
+      assert.not_nil(project_action)
+      project_action.callback(current_pipeline)
       assert.contains(picker_calls[2].opts.prompt, "selected/project")
       picker_calls[2].callback(selected_pipeline)
     end)
@@ -134,6 +144,141 @@ describe("pipeline and job workflows", function()
     assert.eq(requested[1].per_page, 100)
     assert.eq(requested[2].per_page, 100)
     assert.eq(shown.pipeline, selected_pipeline)
+  end)
+
+  it("<C-w> watches the selected pipeline under a cross-project <C-p> selection", function()
+    local picker_calls = {}
+    local watch_calls = {}
+    local current_pipeline = { id = 1, ref = "main", status = "success" }
+    local selected_pipeline = { id = 99, ref = "trunk", status = "running" }
+    with_mocks({
+      { git, "root", function() return "/repo", nil end },
+      { git, "remote_project", function() return "current/project", nil end },
+      { api, "pipelines", function(opts)
+        return opts.project == "selected/project" and { selected_pipeline } or { current_pipeline }, nil
+      end },
+      { picker, "select", function(items, opts, callback)
+        table.insert(picker_calls, { items = items, opts = opts, callback = callback })
+      end },
+      { project_picker, "select", function(_, callback)
+        callback({ path_with_namespace = "selected/project", default_branch = "trunk" })
+      end },
+      { pipeline_watch, "watch", function(opts)
+        table.insert(watch_calls, opts)
+        return true
+      end },
+    }, function()
+      details.show()
+      -- Switch to the foreign project via <C-p>, mirroring
+      -- "GitlabPipelineList -> C-p -> foreign/project -> C-w on pipeline".
+      local project_action
+      for _, action in ipairs(picker_calls[1].opts.actions) do
+        if action.key == "<C-p>" then
+          project_action = action
+          break
+        end
+      end
+      assert.not_nil(project_action)
+      project_action.callback(current_pipeline)
+
+      -- Now trigger <C-w> on the picker showing "selected/project".
+      local watch_action
+      for _, action in ipairs(picker_calls[2].opts.actions) do
+        if action.key == "<C-w>" then
+          watch_action = action
+          break
+        end
+      end
+      assert.not_nil(watch_action)
+      watch_action.callback(selected_pipeline)
+    end)
+
+    assert.eq(#watch_calls, 1)
+    assert.eq(watch_calls[1].pipeline_id, 99)
+    assert.eq(watch_calls[1].project, "selected/project")
+    assert.eq(watch_calls[1].root, "/repo")
+  end)
+
+  it("duplicate <C-w> watch actions on the same pipeline create no duplicate timer or notification", function()
+    -- Exercises the real pipeline_watch module (not mocked) through the
+    -- picker action, so this covers the actual idempotency guarantee rather
+    -- than just the wiring.
+    local notification = require("gitlab.ui.notification")
+    local picker_calls = {}
+    local pipeline = { id = 5, ref = "main", status = "running" }
+
+    local timers_created = 0
+    local fake_timer
+    local function make_fake_timer()
+      local callback, running = nil, false
+      local t = { stopped = false, closed = false }
+      function t:start(_, _, cb) callback = cb; running = true end
+      function t:stop() self.stopped = true; running = false end
+      function t:close() self.closed = true end
+      function t:is_closing() return self.closed end
+      function t:fire() if running and callback then callback() end end
+      return t
+    end
+
+    local info_calls = {}
+    pipeline_watch._set_schedule_wrap(function(fn) return fn end)
+    pipeline_watch._set_timer_constructor(function()
+      timers_created = timers_created + 1
+      fake_timer = make_fake_timer()
+      return fake_timer
+    end)
+
+    local ok, err = pcall(function()
+      with_mock(notification, "info", function(msg) table.insert(info_calls, msg) end, function()
+        with_mocks({
+          { git, "root", function() return "/repo", nil end },
+          { git, "remote_project", function() return "current/project", nil end },
+          { api, "pipelines", function() return { pipeline }, nil end },
+          { api, "pipeline", function(_, opts)
+            return { id = pipeline.id, ref = pipeline.ref, status = "success", project = opts.project }, nil
+          end },
+          { picker, "select", function(items, opts, callback)
+            table.insert(picker_calls, { items = items, opts = opts, callback = callback })
+          end },
+        }, function()
+          details.show()
+          local watch_action
+          for _, action in ipairs(picker_calls[1].opts.actions) do
+            if action.key == "<C-w>" then
+              watch_action = action
+              break
+            end
+          end
+          assert.not_nil(watch_action)
+
+          -- First <C-w> starts the watcher; the duplicate call must be a no-op
+          -- because pipeline_watch.watch() is idempotent per project+pipeline_id.
+          -- (The picker action itself acknowledges each keypress with a
+          -- "Watching pipeline #N" info message — that per-keypress UI
+          -- acknowledgment is not the completion notification under test.)
+          watch_action.callback(pipeline)
+          watch_action.callback(pipeline)
+
+          assert.eq(timers_created, 1)
+
+          -- Drive the single timer to terminal state and confirm exactly one
+          -- completion notification is emitted — not two.
+          fake_timer:fire()
+
+          local completion_notifications = 0
+          for _, msg in ipairs(info_calls) do
+            if msg:find("success", 1, true) then
+              completion_notifications = completion_notifications + 1
+            end
+          end
+          assert.eq(completion_notifications, 1)
+        end)
+      end)
+    end)
+
+    pipeline_watch._reset_test_overrides()
+    pipeline_watch.stop(pipeline.id, "current/project")
+    if not ok then error(err, 0) end
   end)
 
   it("reopens the current PipelineList project when project selection is cancelled", function()
@@ -150,9 +295,19 @@ describe("pipeline and job workflows", function()
         table.insert(picker_calls, opts)
       end },
       { project_picker, "select", function(_, callback) callback(nil) end },
+      { pipeline_watch, "watch", function() return true end },
     }, function()
       details.show()
-      picker_calls[1].actions[2].callback()
+      -- Find the project picker action
+      local project_action
+      for _, action in ipairs(picker_calls[1].actions) do
+        if action.key == "<C-p>" then
+          project_action = action
+          break
+        end
+      end
+      assert.not_nil(project_action)
+      project_action.callback()
     end)
     assert.eq(#requested, 2)
     assert.eq(requested[1], "current/project")
@@ -173,9 +328,19 @@ describe("pipeline and job workflows", function()
       end },
       { picker, "select", function(_, opts) table.insert(picker_calls, opts) end },
       { project_picker, "select", function(_, callback) table.insert(project_callbacks, callback) end },
+      { pipeline_watch, "watch", function() return true end },
     }, function()
       details.show()
-      picker_calls[1].actions[2].callback()
+      -- Find the project picker action
+      local project_action
+      for _, action in ipairs(picker_calls[1].actions) do
+        if action.key == "<C-p>" then
+          project_action = action
+          break
+        end
+      end
+      assert.not_nil(project_action)
+      project_action.callback()
       project_callbacks[1]({ path_with_namespace = "empty/project" })
       project_callbacks[2]({ path_with_namespace = "next/project" })
     end)

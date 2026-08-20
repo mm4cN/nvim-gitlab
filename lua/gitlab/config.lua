@@ -8,6 +8,7 @@ M.options = {
   scratch_height = 15,
   artifacts_dir = "gitlab-artifacts",
   extract_artifacts = true,
+  notification = {},
 }
 
 function M.setup(opts)

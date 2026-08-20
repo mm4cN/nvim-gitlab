@@ -7,6 +7,7 @@ local job_details = require("gitlab.ci.job_details")
 local jobs_module = require("gitlab.ci.jobs")
 local notification = require("gitlab.ui.notification")
 local picker = require("gitlab.ui.picker")
+local pipeline_watch = require("gitlab.ci.pipeline_watch")
 local project_picker = require("gitlab.ui.project_picker")
 
 local M = {}
@@ -126,6 +127,22 @@ local function pick_pipeline(root, project, callback)
         label = "Re-run pipeline",
         callback = function(pipeline)
           actions.rerun_pipeline(pipeline.id, { root = root, project = project })
+        end,
+      },
+      {
+        key = "<C-w>",
+        label = "Watch pipeline",
+        callback = function(pipeline)
+          local already_watching = pipeline_watch.is_watching(pipeline.id, project)
+          if pipeline_watch.watch({ pipeline_id = pipeline.id, project = project, root = root }) then
+            if already_watching then
+              notification.info("Already watching pipeline #" .. pipeline.id)
+            else
+              notification.info("Watching pipeline #" .. pipeline.id)
+            end
+          else
+            notification.error("Failed to start watching pipeline")
+          end
         end,
       },
       {

@@ -14,17 +14,18 @@ describe("configuration", function()
       extract_artifacts = true,
       gitlab_token_env = "GITLAB_TOKEN",
       glab_binary = "glab",
+      notification = {},
       picker = "vim_ui",
       scratch_height = 15,
     }
     local count = 0
     for name, value in pairs(config.options) do
       count = count + 1
-      assert.eq(value, expected[name])
+      assert.truthy(vim.deep_equal(value, expected[name]))
     end
-    assert.eq(count, 7)
+    assert.eq(count, 8)
     for name, value in pairs(expected) do
-      assert.eq(config.options[name], value)
+      assert.truthy(vim.deep_equal(config.options[name], value))
     end
   end)
 end)

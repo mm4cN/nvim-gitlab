@@ -103,8 +103,19 @@ require("gitlab").setup({
 
     artifacts_dir = "gitlab-artifacts",
     extract_artifacts = true,
+
+    notification = {
+        -- Optional; defaults to vim.notify.
+        handler = function(message, level, opts)
+            vim.notify(message, level, opts)
+        end,
+    },
 })
 ```
+
+The notification handler is backend-agnostic, so it can delegate to Noice,
+Snacks, nvim-notify, or another implementation without adding a plugin
+dependency to nvim-gitlab.
 
 ### Telescope Support
 
@@ -269,10 +280,16 @@ Returns a table with pipeline status information:
 
 - `status` — Raw pipeline status string (success, failed, running, pending, etc.)
 - `icon` — Single Unicode character representing the status
-- `text` — Ready-to-use formatted string: `icon .. " " .. status`
+- `text` — Ready-to-use Nerd Font string, such as `: ✓ success`
 - `pipeline_id` — Numeric pipeline ID
+- `watch_count` — Number of active pipeline watches, omitted when zero
+- `watch_text` — Formatted watch indicator, such as `Watching: 2`, omitted when zero
 
-Returns an empty table `{}` when no pipeline is found or on error.
+When watches are active, `text` appends ` | Watching: N`. The leading GitLab
+glyph requires a Nerd Font. The watch indicator
+is available even when the current-branch pipeline status is unavailable.
+Otherwise, an empty table `{}` is returned when no pipeline is found or on
+error.
 
 ### Native Statusline Example
 

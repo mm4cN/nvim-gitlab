@@ -36,6 +36,9 @@ Default configuration:
         scratch_height = 15,
         artifacts_dir = "gitlab-artifacts",
         extract_artifacts = true,
+        notification = {
+            handler = nil,
+        },
     })
 <
     glab_binary        glab executable name or path.
@@ -46,6 +49,10 @@ Default configuration:
     scratch_height     Height of scratch-buffer views.
     artifacts_dir      Artifact download directory, relative to cwd.
     extract_artifacts  Extract downloaded archives when true.
+    notification.handler
+                       Optional function(message, level, opts) used for all
+                       notifications. Defaults to vim.notify. opts.title is
+                       "nvim-gitlab".
 
 ==============================================================================
 COMMANDS                                              *gitlab-commands*
@@ -161,6 +168,7 @@ Telescope Picker Actions:
     Pipeline Picker:
         <CR>    View pipeline details
         <C-r>   Re-run pipeline directly
+        <C-w>   Watch pipeline until it completes
         <C-p>   Select another accessible project
 
     Job Picker:
@@ -305,11 +313,16 @@ Returns a table with the following fields when a pipeline is found:
 
     status        Raw pipeline status string from GitLab.
     icon          Single Unicode character from the icon map.
-    text          Ready-to-use string: icon .. " " .. status.
+    text          Ready-to-use Nerd Font string, e.g. ": ✓ success".
     pipeline_id   Numeric pipeline ID.
+    watch_count   Number of active pipeline watches; omitted when zero.
+    watch_text    Ready-to-use watch indicator; omitted when zero.
 
-Returns an empty table ({}) when there is no repository, no pipeline for
-the current branch, or when any error occurs. Failures are silent.
+When watches are active, text appends " | Watching: N". The leading GitLab
+glyph requires a Nerd Font. The watch indicator remains available even when
+current-branch pipeline data is unavailable.
+Otherwise, returns an empty table ({}) when there is no repository, no
+pipeline for the current branch, or when any error occurs. Failures are silent.
 
 Recognised status values and their icons:
 

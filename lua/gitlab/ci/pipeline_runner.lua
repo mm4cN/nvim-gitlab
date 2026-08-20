@@ -8,6 +8,7 @@ local context = require("gitlab.ci.context")
 local glab = require("gitlab.glab")
 local notification = require("gitlab.ui.notification")
 local picker = require("gitlab.ui.picker")
+local pipeline_watch = require("gitlab.ci.pipeline_watch")
 local project_picker = require("gitlab.ui.project_picker")
 
 local M = {}
@@ -360,13 +361,15 @@ local function submit_pipeline(state, close_runner, notify, trigger)
   close_runner()
   notify.info("Running pipeline on " .. state.ref .. " for " .. state.project .. "...")
 
+  local root = state.root or vim.fn.getcwd()
+
   -- Variable priority: YAML described vars < manual user vars.
   local _, err = trigger({
     project = state.project,
     ref = state.ref,
     inputs = inputs,
     variables = merge_variables(state.yaml_vars, state.variables),
-    cwd = state.root or vim.fn.getcwd(),
+    cwd = root,
   })
 
   if err then
@@ -375,6 +378,23 @@ local function submit_pipeline(state, close_runner, notify, trigger)
   end
 
   notify.info("Pipeline triggered for " .. state.project .. " on " .. state.ref)
+
+  -- `glab ci run` has no structured output containing the created pipeline ID,
+  -- so use the most recent pipeline for this ref. Concurrent pipeline creation
+  -- on the same project/ref can make this association ambiguous.
+  local pipeline = api.latest_pipeline({
+    project = state.project,
+    ref = state.ref,
+    cwd = root,
+  })
+  if pipeline and pipeline.id then
+    pipeline_watch.watch({
+      pipeline_id = pipeline.id,
+      project = state.project,
+      root = root,
+    })
+  end
+
   return true
 end
 

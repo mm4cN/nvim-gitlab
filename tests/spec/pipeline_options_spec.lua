@@ -6,6 +6,7 @@ local with_mock = runner.with_mock
 
 local api = require("gitlab.api")
 local pipeline_runner = require("gitlab.ci.pipeline_runner")
+local pipeline_watch = require("gitlab.ci.pipeline_watch")
 local picker = require("gitlab.ui.picker")
 local project_picker = require("gitlab.ui.project_picker")
 
@@ -504,7 +505,9 @@ describe("pipeline runner component mappings", function()
     pipeline_runner._configure_component_mappings({ project, ref }, {
       run = run, add_variable = function() end, close = function() end,
     })
-    project.mappings["i<C-s>"]()
+    with_mock(api, "latest_pipeline", function() return nil, "no pipeline found" end, function()
+      project.mappings["i<C-s>"]()
+    end)
     assert.eq(triggered, true)
   end)
 
@@ -813,22 +816,24 @@ describe("pipeline runner submission lifecycle", function()
 
   it("closes before the running notification and pipeline trigger", function()
     local events = {}
-    local result = pipeline_runner._submit_pipeline(
-      valid_state(),
-      function() table.insert(events, "close") end,
-      {
-        info = function(message) table.insert(events, "info:" .. message) end,
-        error = function(message) table.insert(events, "error:" .. message) end,
-      },
-      function()
-        table.insert(events, "trigger")
-        return {}, nil
-      end
-    )
-    assert.eq(result, true)
-    assert.eq(events[1], "close")
-    assert.contains(events[2], "Running pipeline")
-    assert.eq(events[3], "trigger")
+    with_mock(api, "latest_pipeline", function() return nil, "no pipeline found" end, function()
+      local result = pipeline_runner._submit_pipeline(
+        valid_state(),
+        function() table.insert(events, "close") end,
+        {
+          info = function(message) table.insert(events, "info:" .. message) end,
+          error = function(message) table.insert(events, "error:" .. message) end,
+        },
+        function()
+          table.insert(events, "trigger")
+          return {}, nil
+        end
+      )
+      assert.eq(result, true)
+      assert.eq(events[1], "close")
+      assert.contains(events[2], "Running pipeline")
+      assert.eq(events[3], "trigger")
+    end)
   end)
 
   it("leaves the runner open on validation failure", function()
@@ -848,5 +853,71 @@ describe("pipeline runner submission lifecycle", function()
     assert.eq(result, false)
     assert.eq(closed, false)
     assert.eq(triggered, false)
+  end)
+
+  it("starts exactly one watcher when the pipeline trigger succeeds", function()
+    local watch_calls = {}
+    with_mock(pipeline_watch, "watch", function(opts)
+      table.insert(watch_calls, opts)
+      return true
+    end, function()
+      with_mock(api, "latest_pipeline", function(opts)
+        assert.eq(opts.project, "ns/project")
+        assert.eq(opts.ref, "main")
+        return { id = 4242, ref = "main", status = "pending" }, nil
+      end, function()
+        local result = pipeline_runner._submit_pipeline(
+          valid_state(),
+          function() end,
+          { info = function() end, error = function() end },
+          function() return {}, nil end
+        )
+        assert.eq(result, true)
+      end)
+    end)
+    assert.eq(#watch_calls, 1)
+    assert.eq(watch_calls[1].pipeline_id, 4242)
+    assert.eq(watch_calls[1].project, "ns/project")
+    assert.eq(watch_calls[1].root, "/repo")
+  end)
+
+  it("starts no watcher when the pipeline trigger fails", function()
+    local watch_calls = {}
+    with_mock(pipeline_watch, "watch", function(opts)
+      table.insert(watch_calls, opts)
+      return true
+    end, function()
+      with_mock(api, "latest_pipeline", function()
+        error("api.latest_pipeline must not be called when the trigger fails")
+      end, function()
+        local result = pipeline_runner._submit_pipeline(
+          valid_state(),
+          function() end,
+          { info = function() end, error = function() end },
+          function() return nil, "glab error" end
+        )
+        assert.eq(result, false)
+      end)
+    end)
+    assert.eq(#watch_calls, 0)
+  end)
+
+  it("starts no watcher when the created pipeline cannot be looked up", function()
+    local watch_calls = {}
+    with_mock(pipeline_watch, "watch", function(opts)
+      table.insert(watch_calls, opts)
+      return true
+    end, function()
+      with_mock(api, "latest_pipeline", function() return nil, "No pipeline found" end, function()
+        local result = pipeline_runner._submit_pipeline(
+          valid_state(),
+          function() end,
+          { info = function() end, error = function() end },
+          function() return {}, nil end
+        )
+        assert.eq(result, true)
+      end)
+    end)
+    assert.eq(#watch_calls, 0)
   end)
 end)

@@ -1,6 +1,7 @@
 local api = require("gitlab.api")
 local constants = require("gitlab.constants")
 local context = require("gitlab.ci.context")
+local pipeline_watch = require("gitlab.ci.pipeline_watch")
 
 local M = {}
 
@@ -15,6 +16,21 @@ local _ctx_retry_after = 0      -- do not retry context refresh before this time
 
 local _cache   = {}         -- { [key] = { data, expires_at, retry_after } }
 local _pending = {}         -- { [key] = true }  pipeline refresh in flight
+local statusline_prefix = constants.gitlab_icon .. ": "
+
+local function with_watch_count(data)
+  local count = pipeline_watch.count()
+  if count == 0 then
+    return data
+  end
+
+  local result = vim.tbl_extend("force", {}, data)
+  result.watch_count = count
+  result.watch_text = "Watching: " .. count
+  result.text = data.text and (data.text .. " | " .. result.watch_text)
+    or (statusline_prefix .. result.watch_text)
+  return result
+end
 
 local function trigger_pipeline_refresh(key, ctx)
   _pending[key] = true
@@ -36,7 +52,7 @@ local function trigger_pipeline_refresh(key, ctx)
       data = {
         status      = status,
         icon        = icon,
-        text        = icon .. " " .. status,
+        text        = statusline_prefix .. icon .. " " .. status,
         pipeline_id = pipeline.id,
       },
       expires_at  = os.time() + CACHE_TTL,
@@ -78,7 +94,7 @@ function M.get()
       trigger_context_refresh()
     end
     if not _ctx then
-      return {}
+      return with_watch_count({})
     end
   end
 
@@ -87,10 +103,10 @@ function M.get()
 
   if entry then
     if entry.retry_after and now < entry.retry_after then
-      return entry.data or {}
+      return with_watch_count(entry.data or {})
     end
     if entry.expires_at and now < entry.expires_at then
-      return entry.data
+      return with_watch_count(entry.data)
     end
   end
 
@@ -98,7 +114,7 @@ function M.get()
     trigger_pipeline_refresh(key, _ctx)
   end
 
-  return (entry and entry.data) or {}
+  return with_watch_count((entry and entry.data) or {})
 end
 
 function M.clear_cache()

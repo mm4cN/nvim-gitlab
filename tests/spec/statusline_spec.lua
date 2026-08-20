@@ -7,6 +7,7 @@ local with_mock = runner.with_mock
 local api     = require("gitlab.api")
 local context = require("gitlab.ci.context")
 local process = require("gitlab.util.process")
+local pipeline_watch = require("gitlab.ci.pipeline_watch")
 local statusline = require("gitlab.statusline")
 
 -- Helpers -----------------------------------------------------------------
@@ -35,7 +36,7 @@ local function seed(project, ref, status)
   local icon = constants.pipeline_status_icons[status] or "?"
   statusline._cache[key] = {
     data        = { status = status, icon = icon,
-                    text = icon .. " " .. status, pipeline_id = 1 },
+                    text = ": " .. icon .. " " .. status, pipeline_id = 1 },
     expires_at  = os.time() + 60,
     retry_after = nil,
   }
@@ -85,6 +86,55 @@ describe("statusline.get — pipeline states", function()
         local result = statusline.get()
         assert.eq(result.icon, "?")
         assert.eq(result.status, "some_future_status")
+      end)
+    end)
+  end)
+end)
+
+describe("statusline.get — watched pipelines", function()
+  it("omits the watch indicator when no pipelines are watched", function()
+    setup()
+    with_mock(pipeline_watch, "count", function() return 0 end, function()
+      with_ctx("ns/proj", "main", function()
+        with_pipeline("success", function()
+          statusline.get()
+          local result = statusline.get()
+          assert.is_nil(result.watch_count)
+          assert.is_nil(result.watch_text)
+          assert.eq(result.text, ": ✓ success")
+        end)
+      end)
+    end)
+  end)
+
+  it("adds the current watch count without caching it", function()
+    setup()
+    local count = 2
+    with_mock(pipeline_watch, "count", function() return count end, function()
+      with_ctx("ns/proj", "main", function()
+        with_pipeline("running", function()
+          statusline.get()
+          local result = statusline.get()
+          assert.eq(result.watch_count, 2)
+          assert.eq(result.watch_text, "Watching: 2")
+          assert.eq(result.text, ": ● running | Watching: 2")
+
+          count = 0
+          result = statusline.get()
+          assert.is_nil(result.watch_count)
+          assert.eq(result.text, ": ● running")
+        end)
+      end)
+    end)
+  end)
+
+  it("shows watched pipelines while branch status is unavailable", function()
+    setup()
+    with_mock(pipeline_watch, "count", function() return 1 end, function()
+      with_mock(context, "from_cwd_async", function() end, function()
+        local result = statusline.get()
+        assert.eq(result.watch_count, 1)
+        assert.eq(result.text, ": Watching: 1")
       end)
     end)
   end)
