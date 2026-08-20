@@ -8,6 +8,7 @@ local context = require("gitlab.ci.context")
 local glab = require("gitlab.glab")
 local notification = require("gitlab.ui.notification")
 local picker = require("gitlab.ui.picker")
+local project_picker = require("gitlab.ui.project_picker")
 
 local M = {}
 
@@ -36,6 +37,7 @@ local function runner_hint_lines()
     "  S-Tab     Previous field",
     "",
     "  j / k     Choose option",
+    "  C-p       Pick project",
     "  C-r       Pick ref",
     "  a         Add variable",
     "  d         Remove variable",
@@ -461,6 +463,16 @@ local function change_project(state, candidate, get_project, discover)
     state.ref = previous_ref
     return nil, err
   end
+  if type(project.path_with_namespace) ~= "string" or project.path_with_namespace == "" then
+    state.project = previous_project
+    state.ref = previous_ref
+    return nil, "Project metadata is missing path_with_namespace"
+  end
+  if type(project.default_branch) ~= "string" or project.default_branch == "" then
+    state.project = previous_project
+    state.ref = previous_ref
+    return nil, "Project has no default branch"
+  end
 
   local canonical_project = project.path_with_namespace
   local canonicalizing_fallback = not state.committed_project and candidate == state.project_fallback
@@ -485,6 +497,62 @@ local function change_project(state, candidate, get_project, discover)
   return true, true
 end
 
+local function open_project_picker(state, close_runner, select_project, discover, rebuild, notify)
+  local previous_project = state.project
+  local previous_ref = state.ref
+  local completed = false
+  close_runner()
+  select_project({ cwd = state.root or vim.fn.getcwd() }, function(selected)
+    if completed then
+      return
+    end
+    completed = true
+    if not selected then
+      state.project = previous_project
+      state.ref = previous_ref
+      rebuild({ focus_project = true })
+      return
+    end
+
+    local ok, changed_or_err = change_project(
+      state,
+      selected.path_with_namespace,
+      -- Project picker entries already came from api.projects(); reuse that
+      -- normalized metadata and never issue a second api.project() request.
+      function() return selected, nil end,
+      discover
+    )
+    if not ok then
+      notify.error("Could not change project: " .. tostring(changed_or_err))
+      rebuild({ focus_project = true })
+      return
+    end
+    rebuild(changed_or_err and { focus_ref = true } or { focus_project = true })
+  end)
+end
+
+local function configure_project_picker_mapping(components, on_pick_project)
+  for _, component in ipairs(components) do
+    component:map("i", "<C-p>", function()
+      vim.cmd("stopinsert")
+      on_pick_project()
+    end, { noremap = true })
+    component:map("n", "<C-p>", on_pick_project, { noremap = true })
+  end
+end
+
+local function configure_ref_picker_mapping(components, on_pick_ref)
+  for _, component in ipairs(components) do
+    -- Intentionally shadow insert-mode <C-r> (insert register) inside runner
+    -- buffers so Ref picking remains a consistent runner-global action.
+    component:map("i", "<C-r>", function()
+      vim.cmd("stopinsert")
+      on_pick_ref()
+    end, { noremap = true })
+    component:map("n", "<C-r>", on_pick_ref, { noremap = true })
+  end
+end
+
 -- make_desc_popup creates a non-focusable, borderless popup for description text.
 local function make_desc_popup()
   return Popup({
@@ -495,7 +563,17 @@ local function make_desc_popup()
   })
 end
 
-local function build_and_mount(state, on_run, on_pick_ref, on_add_variable, on_remove_variable, on_close, on_submit_project, on_submit_ref)
+local function build_and_mount(
+  state,
+  on_run,
+  on_pick_project,
+  on_pick_ref,
+  on_add_variable,
+  on_remove_variable,
+  on_close,
+  on_submit_project,
+  on_submit_ref
+)
   local hint_lines = runner_hint_lines()
   local hints_size = #hint_lines
   local project_input = make_input("Project", state.project, function(v)
@@ -721,12 +799,8 @@ local function build_and_mount(state, on_run, on_pick_ref, on_add_variable, on_r
     end, { noremap = true })
   end
 
-  ref_input:map("i", "<C-r>", function()
-    vim.cmd("stopinsert")
-    on_pick_ref()
-  end, { noremap = true })
-
-  ref_input:map("n", "<C-r>", on_pick_ref, { noremap = true })
+  configure_ref_picker_mapping(tab_order, on_pick_ref)
+  configure_project_picker_mapping(tab_order, on_pick_project)
 
   return layout, project_input, ref_input, var_inputs, viewport
 end
@@ -791,6 +865,10 @@ function M.open()
     open_ref_picker(state, branches, close, fetch_inputs, build, picker.select)
   end
 
+  local function pick_project()
+    open_project_picker(state, close, project_picker.select, fetch_inputs, build, notification)
+  end
+
   add_variable = function()
     table.insert(state.variables, { key = "", value = "" })
     build({ focus_last_var = true })
@@ -831,7 +909,17 @@ function M.open()
     end
 
     local layout, project_input, ref_input, var_inputs, viewport =
-      build_and_mount(state, run, pick_ref, add_variable, remove_variable, close, on_submit_project, on_submit_ref)
+      build_and_mount(
+        state,
+        run,
+        pick_project,
+        pick_ref,
+        add_variable,
+        remove_variable,
+        close,
+        on_submit_project,
+        on_submit_ref
+      )
     current_layout = layout
 
   -- Schedule focus so it fires after NUI completes its async mount tick.
@@ -866,6 +954,9 @@ end
 
 M._fetch_inputs = fetch_inputs
 M._change_project = change_project
+M._open_project_picker = open_project_picker
+M._configure_project_picker_mapping = configure_project_picker_mapping
+M._configure_ref_picker_mapping = configure_ref_picker_mapping
 M._merge_variables = merge_variables
 M._sanitize_ui = sanitize_ui
 M._option_index = option_index

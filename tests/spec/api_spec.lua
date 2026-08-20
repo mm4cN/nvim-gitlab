@@ -131,6 +131,71 @@ describe("api.project", function()
   end)
 end)
 
+describe("api.projects", function()
+  it("lists membership projects in activity order and normalizes entries", function()
+    local paths = {}
+    local projects
+    with_mock(glab, "run_json", function(args)
+      table.insert(paths, args[2])
+      if #paths == 1 then
+        return {
+          {
+            id = 1, name = "one", path_with_namespace = "group/one",
+            default_branch = "main", last_activity_at = "2026-08-20",
+          },
+          {
+            id = 2, name = "empty", path_with_namespace = "group/empty",
+            default_branch = vim.NIL,
+          },
+        }, nil
+      end
+      return {}, nil
+    end, function()
+      projects = api.projects({ per_page = 2, max_pages = 3, cwd = "/repo" })
+    end)
+    assert.contains(paths[1], "membership=true")
+    assert.contains(paths[1], "order_by=last_activity_at")
+    assert.contains(paths[1], "per_page=2&page=1")
+    assert.contains(paths[2], "per_page=2&page=2")
+    assert.eq(#paths, 2)
+    assert.eq(#projects, 2)
+    assert.eq(projects[1].path_with_namespace, "group/one")
+    assert.eq(projects[1].default_branch, "main")
+    assert.eq(projects[2].default_branch, "")
+  end)
+
+  it("stops after a short page", function()
+    local calls = 0
+    with_mock(glab, "run_json", function()
+      calls = calls + 1
+      return {
+        { id = 1, name = "one", path_with_namespace = "group/one", default_branch = "main" },
+      }, nil
+    end, function()
+      local projects = api.projects({ per_page = 100, max_pages = 3 })
+      assert.eq(#projects, 1)
+    end)
+    assert.eq(calls, 1)
+  end)
+
+  it("propagates pagination failures without returning partial results", function()
+    local calls = 0
+    with_mock(glab, "run_json", function()
+      calls = calls + 1
+      if calls == 1 then
+        return {
+          { id = 1, name = "one", path_with_namespace = "group/one", default_branch = "main" },
+        }, nil
+      end
+      return nil, "forbidden"
+    end, function()
+      local projects, err = api.projects({ per_page = 1, max_pages = 2 })
+      assert.is_nil(projects)
+      assert.eq(err, "forbidden")
+    end)
+  end)
+end)
+
 describe("api.latest_pipeline", function()
   it("uses encoded explicit project in path", function()
     local path = capture_path_json_with_list(function()

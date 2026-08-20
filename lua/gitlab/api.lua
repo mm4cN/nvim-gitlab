@@ -155,6 +155,56 @@ function M.project(opts)
   }, nil
 end
 
+function M.projects(opts)
+  opts = opts or {}
+  local per_page = opts.per_page or 100
+  local max_pages = opts.max_pages or 3
+  local projects = {}
+
+  for page = 1, max_pages do
+    local query = table.concat({
+      "membership=true",
+      "simple=true",
+      "order_by=last_activity_at",
+      "sort=desc",
+      "per_page=" .. tostring(per_page),
+      "page=" .. tostring(page),
+    }, "&")
+    local result, err = M.get("projects?" .. query, { cwd = opts.cwd })
+    if err then
+      return nil, err
+    end
+    if type(result) ~= "table" or not vim.islist(result) then
+      return nil, "Projects metadata is unavailable"
+    end
+
+    for _, project in ipairs(result) do
+      if type(project.id) ~= "number" then
+        return nil, "Project metadata is missing id"
+      end
+      if type(project.name) ~= "string" or project.name == "" then
+        return nil, "Project metadata is missing name"
+      end
+      if type(project.path_with_namespace) ~= "string" or project.path_with_namespace == "" then
+        return nil, "Project metadata is missing path_with_namespace"
+      end
+      table.insert(projects, {
+        id = project.id,
+        name = project.name,
+        path_with_namespace = project.path_with_namespace,
+        default_branch = type(project.default_branch) == "string" and project.default_branch or "",
+        last_activity_at = project.last_activity_at,
+      })
+    end
+
+    if #result < per_page then
+      break
+    end
+  end
+
+  return projects, nil
+end
+
 local function is_map(value)
   return type(value) == "table" and not vim.islist(value)
 end

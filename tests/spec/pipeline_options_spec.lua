@@ -6,6 +6,8 @@ local with_mock = runner.with_mock
 
 local api = require("gitlab.api")
 local pipeline_runner = require("gitlab.ci.pipeline_runner")
+local picker = require("gitlab.ui.picker")
+local project_picker = require("gitlab.ui.project_picker")
 
 describe("pipeline runner UI sanitization", function()
   it("normalizes CR/LF and tabs and strips trailing whitespace", function()
@@ -238,13 +240,216 @@ describe("pipeline runner ref picker lifecycle", function()
   end)
 end)
 
+describe("pipeline runner project picker lifecycle", function()
+  local function state()
+    return {
+      project = "old/project",
+      committed_project = "old/project",
+      project_fallback = "old/project",
+      ref = "feature/old",
+      root = "/repo",
+      fields = { { name = "OLD", value = "old" } },
+      yaml_vars = { { key = "OLD", value = "old" } },
+      yaml_vars_key = "old/project|feature/old",
+      variables = { { key = "MANUAL", value = "keep" } },
+    }
+  end
+
+  it("hides the runner, applies selection, refreshes, and restores Ref focus", function()
+    local current = state()
+    local events = {}
+    pipeline_runner._open_project_picker(
+      current,
+      function() table.insert(events, "close") end,
+      function(opts, callback)
+        assert.eq(opts.cwd, "/repo")
+        table.insert(events, "picker")
+        callback({ path_with_namespace = "new/project", default_branch = "trunk" })
+      end,
+      function(received) table.insert(events, "fetch:" .. received.project .. "|" .. received.ref) end,
+      function(opts)
+        assert.eq(opts.focus_ref, true)
+        table.insert(events, "build")
+      end,
+      { error = function(message) error(message) end }
+    )
+    assert.eq(current.project, "new/project")
+    assert.eq(current.committed_project, "new/project")
+    assert.eq(current.ref, "trunk")
+    assert.eq(current.variables[1].key, "MANUAL")
+    assert.eq(table.concat(events, ","), "close,picker,fetch:new/project|trunk,build")
+  end)
+
+  it("restores Project/Ref and Project focus when cancelled", function()
+    local current = state()
+    local focused = false
+    pipeline_runner._open_project_picker(
+      current,
+      function() end,
+      function(_, callback) callback(nil) end,
+      function() error("discovery must not run") end,
+      function(opts) focused = opts.focus_project end,
+      { error = function(message) error(message) end }
+    )
+    assert.eq(current.project, "old/project")
+    assert.eq(current.ref, "feature/old")
+    assert.eq(focused, true)
+  end)
+
+  it("keeps Project focus when selection resolves to the committed canonical project", function()
+    local current = state()
+    local focused_project = false
+    local focused_ref = false
+    pipeline_runner._open_project_picker(
+      current,
+      function() end,
+      function(_, callback)
+        callback({ path_with_namespace = "old/project", default_branch = "main" })
+      end,
+      function() error("discovery must not run") end,
+      function(opts)
+        focused_project = opts.focus_project == true
+        focused_ref = opts.focus_ref == true
+      end,
+      { error = function(message) error(message) end }
+    )
+    assert.eq(current.ref, "feature/old")
+    assert.eq(focused_project, true)
+    assert.eq(focused_ref, false)
+  end)
+
+  it("handles project picker completion exactly once", function()
+    local current = state()
+    local rebuilt = 0
+    pipeline_runner._open_project_picker(
+      current,
+      function() end,
+      function(_, callback)
+        callback({ path_with_namespace = "new/project", default_branch = "main" })
+        callback(nil)
+      end,
+      function() end,
+      function() rebuilt = rebuilt + 1 end,
+      { error = function(message) error(message) end }
+    )
+    assert.eq(rebuilt, 1)
+    assert.eq(current.project, "new/project")
+  end)
+
+  it("restores the runner when a selected project has no default branch", function()
+    local current = state()
+    local message
+    local focused = false
+    pipeline_runner._open_project_picker(
+      current,
+      function() end,
+      function(_, callback)
+        callback({ path_with_namespace = "empty/project", default_branch = "" })
+      end,
+      function() error("discovery must not run") end,
+      function(opts) focused = opts.focus_project end,
+      { error = function(value) message = value end }
+    )
+    assert.eq(current.project, "old/project")
+    assert.eq(current.ref, "feature/old")
+    assert.contains(message, "no default branch")
+    assert.eq(focused, true)
+  end)
+
+  it("preserves all runner state through api.projects selection without a default branch", function()
+    local current = state()
+    local original_fields = current.fields
+    local original_yaml_vars = current.yaml_vars
+    local original_variables = current.variables
+    local discovery_called = false
+    local project_lookup_called = false
+    local focused = false
+    local message
+
+    with_mock(api, "projects", function()
+      return {
+        {
+          id = 42,
+          name = "empty",
+          path_with_namespace = "empty/project",
+          default_branch = "",
+          last_activity_at = "2026-08-20",
+        },
+      }, nil
+    end, function()
+      with_mock(api, "project", function()
+        project_lookup_called = true
+        return nil, "must not be called"
+      end, function()
+        with_mock(picker, "select", function(items, _, callback) callback(items[1]) end, function()
+          pipeline_runner._open_project_picker(
+            current,
+            function() end,
+            project_picker.select,
+            function() discovery_called = true end,
+            function(opts) focused = opts.focus_project == true end,
+            { error = function(value) message = value end }
+          )
+        end)
+      end)
+    end)
+
+    assert.eq(project_lookup_called, false)
+    assert.eq(discovery_called, false)
+    assert.eq(current.project, "old/project")
+    assert.eq(current.committed_project, "old/project")
+    assert.eq(current.ref, "feature/old")
+    assert.eq(current.fields, original_fields)
+    assert.eq(current.yaml_vars, original_yaml_vars)
+    assert.eq(current.variables, original_variables)
+    assert.contains(message, "no default branch")
+    assert.eq(focused, true)
+  end)
+
+  it("reuses api.projects metadata without a second api.project lookup", function()
+    local current = state()
+    local project_lookup_called = false
+    local discovered
+    with_mock(api, "projects", function()
+      return {
+        {
+          id = 42,
+          name = "new",
+          path_with_namespace = "canonical/new",
+          default_branch = "trunk",
+        },
+      }, nil
+    end, function()
+      with_mock(api, "project", function()
+        project_lookup_called = true
+        return nil, "must not be called"
+      end, function()
+        with_mock(picker, "select", function(items, _, callback) callback(items[1]) end, function()
+          pipeline_runner._open_project_picker(
+            current,
+            function() end,
+            project_picker.select,
+            function(received) discovered = received.project .. "|" .. received.ref end,
+            function(opts) assert.eq(opts.focus_ref, true) end,
+            { error = function(message) error(message) end }
+          )
+        end)
+      end)
+    end)
+    assert.eq(project_lookup_called, false)
+    assert.eq(discovered, "canonical/new|trunk")
+    assert.eq(current.committed_project, "canonical/new")
+  end)
+end)
+
 describe("pipeline runner hints", function()
   it("renders concise vertical keybindings", function()
     local lines = pipeline_runner._runner_hint_lines()
-    assert.eq(#lines, 13)
+    assert.eq(#lines, 14)
     local text = table.concat(lines, "\n")
     assert.contains(text, "Keybindings")
     assert.contains(text, "C-s       Run pipeline")
+    assert.contains(text, "C-p       Pick project")
     assert.contains(text, "C-r       Pick ref")
     assert.eq(text:find("<CR>", 1, true), nil)
   end)
@@ -310,6 +515,36 @@ describe("pipeline runner component mappings", function()
     assert.eq(component.options.keymap.focus_next[2], "<Down>")
     assert.eq(component.options.keymap.focus_prev[1], "k")
     assert.eq(component.options.keymap.focus_prev[2], "<Up>")
+  end)
+
+  it("maps project picking on every component so it remains available after Ref focus", function()
+    local project = fake("input")
+    local ref = fake("input")
+    local menu = fake("menu")
+    local picked = 0
+    pipeline_runner._configure_project_picker_mapping({ project, ref, menu }, function() picked = picked + 1 end)
+    for _, component in ipairs({ project, ref, menu }) do
+      assert.not_nil(component.mappings["i<C-p>"])
+      assert.not_nil(component.mappings["n<C-p>"])
+    end
+    ref.mappings["n<C-p>"]()
+    menu.mappings["n<C-p>"]()
+    assert.eq(picked, 2)
+  end)
+
+  it("intentionally reserves C-r for global Ref picking in insert and normal mode", function()
+    local project = fake("input")
+    local ref = fake("input")
+    local menu = fake("menu")
+    local picked = 0
+    pipeline_runner._configure_ref_picker_mapping({ project, ref, menu }, function() picked = picked + 1 end)
+    for _, component in ipairs({ project, ref, menu }) do
+      assert.not_nil(component.mappings["i<C-r>"])
+      assert.not_nil(component.mappings["n<C-r>"])
+    end
+    project.mappings["n<C-r>"]()
+    menu.mappings["n<C-r>"]()
+    assert.eq(picked, 2)
   end)
 end)
 
