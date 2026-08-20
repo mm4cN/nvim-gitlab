@@ -10,13 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - Include-aware discovery of legacy described CI/CD variables in the interactive pipeline runner.
+- Reusable accessible-project picker for the pipeline runner and `:GitlabPipelineList`.
+- Cross-project pipeline browsing with up to 100 recent pipelines available for local picker filtering.
+- Fixed-height runner form viewport with rounded form/help panes, automatic focus scrolling, and a proportional scrollbar.
 - Explicit public Lua API documentation for setup and statusline access.
 - Actionable health diagnostics for required `glab` and `nui.nvim`, optional Telescope, and feature-specific token usage.
 
 ### Changed
 
 - `:GitlabPipelineRun` is now the canonical interactive pipeline runner, with project/ref selection, CI discovery, and manual variables.
-- YAML discovery remains dependency-free and now documents its intentionally supported subset.
+- Runner-wide `<C-p>`, `<C-r>`, and `<C-s>` mappings now select Project, select Ref, and run the pipeline from every focusable field. Enter remains field-local.
+- Project changes use canonical GitLab project metadata, switch Ref to the selected project's default branch, and preserve manually added variables across discovery transitions.
+- Cross-project pipeline details preserve the selected project through job lookup, logs, artifacts, retry/play, refresh, and pipeline rerun actions.
+- YAML discovery now uses a compatible `yq` YAML-to-JSON transcoder instead of the previous limited local parser.
 - Telescope selection falls back to `vim.ui` when Telescope is configured but unavailable.
 - `:GitlabPipelineList` and `:GitlabJobList` now use the configured picker backend to select an item and open its details.
 - The public command and configuration surfaces have been audited and stabilized for 1.0.
@@ -32,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - Unsupported YAML scalar constructs are ignored instead of being interpreted as literal input or variable values.
+- Project and Ref picker cancellation, and selection of a project without a default branch, restore coherent runner values and focus.
+- Pipeline List project selection remains available after choosing a project with no pipelines.
 
 ## [0.9.0] - 2026-08-18
 

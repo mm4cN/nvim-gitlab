@@ -82,18 +82,31 @@ Pipelines:
             Tab / S-Tab     Move to next / previous field.
             j / k           Move through an option field.
             Down / Up       Move through an option field.
+            <C-p>           Pick an accessible project (all fields).
             <C-r>           Pick a branch from the selected project
-                            (available on the Ref field only).
+                            (all fields).
             a               Add a pipeline variable field (normal mode).
             d               Remove the focused user-added variable (normal
                             mode). Discovered variables cannot be removed.
-            <CR>            Run the pipeline.
+            <C-s>           Run the pipeline (all fields).
+            <CR>            Commit or interact with the focused field.
             q / <Esc>       Close the runner.
 
         Pipeline variables are independent from spec:inputs. Variables are
-        passed to glab as --variables KEY:VALUE. Up to 7 variable fields can
-        be added per run (UI limit). Discovery refreshes automatically after
-        the project or ref changes.
+        passed to glab as --variables KEY:VALUE. Discovery refreshes
+        automatically after the project or ref changes.
+
+        The runner is split into two rounded panes: a fixed-height scrollable
+        form on the left and a fixed, non-focusable keybinding legend on the
+        right. Tab and S-Tab automatically scroll an off-screen destination
+        into view. A proportional scrollbar is shown when the form exceeds
+        the viewport. The outer runner does not grow with discovered or
+        manually added fields.
+
+        Project changes resolve the canonical path_with_namespace and switch
+        Ref to the project's default branch. Manually added variables survive
+        project/ref discovery transitions. Project and Ref picker cancellation
+        restores coherent visible values and focus.
 
         Fields with configured options are selection menus; other fields
         remain editable inputs. Multiline option labels are normalized for
@@ -110,7 +123,12 @@ Pipelines:
         Show the latest pipeline for the current branch.
 
     :GitlabPipelineList
-        Select a pipeline and open its details view.
+        Select a pipeline and open its details view. Press <C-p> in the
+        pipeline picker to select another accessible project. The current
+        project is displayed in the picker prompt, and up to 100 recent
+        pipelines are fetched for local filtering. The selected project remains
+        active through pipeline/job details, logs, artifacts, refresh,
+        retry/play, and pipeline rerun actions.
 
 Jobs:
 
@@ -143,6 +161,7 @@ Telescope Picker Actions:
     Pipeline Picker:
         <CR>    View pipeline details
         <C-r>   Re-run pipeline directly
+        <C-p>   Select another accessible project
 
     Job Picker:
         <CR>    Select job for action

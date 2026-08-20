@@ -137,7 +137,8 @@ With Telescope enabled, pickers provide additional features:
 - Show latest pipeline status
 - Open pipeline details
 - Re-run pipelines
-- Cross-project pipeline runner with ref picker and pipeline variables
+- Cross-project pipeline runner with project/ref pickers, CI inputs, and pipeline variables
+- Browse and operate on pipelines from any accessible project
 
 ### CI Jobs
 
@@ -207,6 +208,29 @@ Pipeline fields with configured options use selection menus (`j`/`k` or arrow
 keys). Tab and Shift-Tab continue across editable and selection fields. Option
 labels are normalized for display, while selected values are submitted without
 destructive sanitization.
+
+The runner uses a fixed-height, scrollable form beside a non-focusable
+keybinding legend. Tab and Shift-Tab move between fields and automatically
+scroll the destination into view. The scrollbar indicates the current position
+when the form contains more fields than fit in the viewport.
+
+Runner-wide actions are available from Project, Ref, input, variable, and option
+fields:
+
+- `<C-p>` select a project
+- `<C-r>` select a ref for the current project
+- `<C-s>` run the pipeline
+- `a` add a variable and `d` remove a user-added variable (normal mode)
+- `q` or `<Esc>` close the runner
+
+Enter remains field-local: it commits Project/Ref edits and retains the native
+interaction of the focused field; it is not the Run shortcut. Selecting another
+project resolves its canonical GitLab path, switches Ref to its default branch,
+and refreshes CI discovery while preserving manually added variables.
+
+In `:GitlabPipelineList`, press `<C-p>` to select another accessible project.
+The active project is shown in the picker prompt, and pipeline/job details,
+logs, artifacts, refreshes, and reruns retain that selected project context.
 
 ### Interactive Views
 
