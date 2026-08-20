@@ -12,7 +12,6 @@ require("tests.spec.pagination_spec")
 require("tests.spec.commands_spec")
 require("tests.spec.pipeline_options_spec")
 require("tests.spec.workflows_spec")
-require("tests.spec.project_vars_spec")
 require("tests.spec.legacy_vars_spec")
 require("tests.spec.statusline_spec")
 

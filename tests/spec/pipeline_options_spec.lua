@@ -192,7 +192,6 @@ describe("pipeline runner added variables", function()
         { key = "NEXT", value = "three" },
       },
       yaml_vars = { { key = "DISCOVERED", value = "yaml" } },
-      project_vars = { { key = "PROJECT", value = "api" } },
     }
 
     local removed, focus_opts = pipeline_runner._remove_added_variable(state, 2)
@@ -202,7 +201,6 @@ describe("pipeline runner added variables", function()
     assert.eq(state.variables[1].key, "KEEP")
     assert.eq(state.variables[2].key, "NEXT")
     assert.eq(state.yaml_vars[1].key, "DISCOVERED")
-    assert.eq(state.project_vars[1].key, "PROJECT")
   end)
 
   it("focuses the previous variable after removing the last one", function()
@@ -242,7 +240,6 @@ describe("pipeline runner submission lifecycle", function()
       root = "/repo",
       fields = {},
       yaml_vars = {},
-      project_vars = {},
       variables = {},
     }
   end

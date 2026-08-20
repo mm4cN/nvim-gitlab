@@ -67,13 +67,13 @@ local function collect_inputs(fields)
 end
 
 -- merge_variables builds the final variable list for the pipeline trigger.
--- Project variables go first; manual variables override matching keys.
+-- Base variables go first; manual variables override matching keys.
 -- The result contains no duplicate keys.
-local function merge_variables(project_vars, manual_vars)
+local function merge_variables(base_vars, manual_vars)
   local seen = {}
   local result = {}
 
-  for _, pv in ipairs(project_vars) do
+  for _, pv in ipairs(base_vars) do
     if pv.key and pv.key ~= "" and not seen[pv.key] then
       seen[pv.key] = true
       table.insert(result, { key = pv.key, value = pv.value })
@@ -248,21 +248,15 @@ local function submit_pipeline(state, close_runner, notify, trigger)
     notify.error(yaml_err)
     return false
   end
-  local project_valid, project_err = validate_option_values(state.project_vars)
-  if not project_valid then
-    notify.error(project_err)
-    return false
-  end
-
   close_runner()
   notify.info("Running pipeline on " .. state.ref .. " for " .. state.project .. "...")
 
-  -- Variable priority: API project vars < YAML described vars < manual user vars.
+  -- Variable priority: YAML described vars < manual user vars.
   local _, err = trigger({
     project = state.project,
     ref = state.ref,
     inputs = inputs,
-    variables = merge_variables(merge_variables(state.project_vars, state.yaml_vars), state.variables),
+    variables = merge_variables(state.yaml_vars, state.variables),
     cwd = state.root or vim.fn.getcwd(),
   })
 
@@ -273,46 +267,6 @@ local function submit_pipeline(state, close_runner, notify, trigger)
 
   notify.info("Pipeline triggered for " .. state.project .. " on " .. state.ref)
   return true
-end
-
--- normalize_project_vars filters raw API variables to those with a non-empty
--- description and applies edited-value preservation: a value the user already
--- typed overrides the freshly fetched API value.
--- Full variable metadata from the API is preserved on each entry.
-local function normalize_project_vars(raw_vars, existing)
-  existing = existing or {}
-  local result = {}
-  for _, v in ipairs(raw_vars or {}) do
-    if v.description and v.description ~= "" then
-      local entry = vim.tbl_extend("force", {}, v)
-      entry.value = (existing[v.key] ~= nil and existing[v.key]) or (v.value or "")
-      table.insert(result, entry)
-    end
-  end
-  return result
-end
-
-local function fetch_project_vars(state)
-  if state.project == "" then
-    return
-  end
-
-  local vars, _ = api.variables({
-    project = state.project,
-    cwd = state.root or vim.fn.getcwd(),
-  })
-
-  -- Only carry forward edited values when refreshing the same project.
-  -- A project change discards previous edits so stale values do not leak.
-  local existing = {}
-  if state.project_vars_project == state.project then
-    for _, pv in ipairs(state.project_vars) do
-      existing[pv.key] = pv.value
-    end
-  end
-
-  state.project_vars = normalize_project_vars(vars, existing)
-  state.project_vars_project = state.project
 end
 
 local function fetch_inputs(state)
@@ -429,21 +383,6 @@ local function build_and_mount(state, on_run, on_pick_ref, on_add_variable, on_r
     })
   end
 
-  local proj_var_entries = {}
-  for _, pv in ipairs(state.project_vars) do
-    local p = pv
-    local input, size, menu_entry = make_field_component(p, sanitize_ui(p.key))
-    local desc_popup, desc_text
-    if p.description and p.description ~= "" then
-      desc_popup = make_desc_popup()
-      desc_text = sanitize_ui(p.description)
-    end
-    table.insert(proj_var_entries, {
-      input = input, size = size, menu_entry = menu_entry,
-      desc = desc_popup, desc_text = desc_text,
-    })
-  end
-
   local var_inputs = {}
   for _, var in ipairs(state.variables) do
     local v = var
@@ -474,9 +413,9 @@ local function build_and_mount(state, on_run, on_pick_ref, on_add_variable, on_r
   end
 
   local n_vars = #var_inputs
-  local n_descs = count_descs(field_entries) + count_descs(yaml_var_entries) + count_descs(proj_var_entries)
+  local n_descs = count_descs(field_entries) + count_descs(yaml_var_entries)
   local height = 2 * 3 + n_vars * 3 + n_descs + hints_size
-  for _, entries in ipairs({ field_entries, yaml_var_entries, proj_var_entries }) do
+  for _, entries in ipairs({ field_entries, yaml_var_entries }) do
     for _, entry in ipairs(entries) do height = height + entry.size end
   end
 
@@ -494,7 +433,6 @@ local function build_and_mount(state, on_run, on_pick_ref, on_add_variable, on_r
   end
   add_entries(field_entries)
   add_entries(yaml_var_entries)
-  add_entries(proj_var_entries)
   for _, vi in ipairs(var_inputs) do
     table.insert(boxes, Layout.Box(vi, { size = 3 }))
   end
@@ -507,7 +445,7 @@ local function build_and_mount(state, on_run, on_pick_ref, on_add_variable, on_r
 
   layout:mount()
 
-  for _, entries in ipairs({ field_entries, yaml_var_entries, proj_var_entries }) do
+  for _, entries in ipairs({ field_entries, yaml_var_entries }) do
     for _, entry in ipairs(entries) do
       if entry.menu_entry then
         local selected = entry.menu_entry.selected_index
@@ -535,7 +473,6 @@ local function build_and_mount(state, on_run, on_pick_ref, on_add_variable, on_r
   end
   populate_descs(field_entries)
   populate_descs(yaml_var_entries)
-  populate_descs(proj_var_entries)
 
   -- Tab order contains only focusable inputs; desc popups are intentionally excluded.
   local tab_order = { project_input, ref_input }
@@ -546,7 +483,6 @@ local function build_and_mount(state, on_run, on_pick_ref, on_add_variable, on_r
   end
   add_inputs_to_tab(field_entries)
   add_inputs_to_tab(yaml_var_entries)
-  add_inputs_to_tab(proj_var_entries)
   for _, vi in ipairs(var_inputs) do
     table.insert(tab_order, vi)
   end
@@ -596,8 +532,6 @@ function M.open()
     ref = ctx and ctx.ref or "",
     root = ctx and ctx.root or nil,
     fields = {},
-    project_vars = {},
-    project_vars_project = "",
     yaml_vars = {},
     yaml_vars_key = "",
     variables = {},
@@ -669,7 +603,6 @@ function M.open()
     if state.project == "" then
       return
     end
-    fetch_project_vars(state)
     fetch_inputs(state)
     build()
   end
@@ -711,7 +644,6 @@ function M.open()
   end
 
   fetch_inputs(state)
-  fetch_project_vars(state)
   build()
 
   if not ctx then
@@ -719,8 +651,6 @@ function M.open()
   end
 end
 
-M._normalize_project_vars = normalize_project_vars
-M._fetch_project_vars = fetch_project_vars
 M._fetch_inputs = fetch_inputs
 M._merge_variables = merge_variables
 M._sanitize_ui = sanitize_ui

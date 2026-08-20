@@ -75,10 +75,6 @@ Pipelines:
             Project         GitLab project in namespace/project format.
             Ref / Branch    Branch or ref to run the pipeline on.
             Inputs          Discovered spec:inputs fields (experimental).
-            Project Vars    Described project CI/CD variables fetched from
-                            GitLab. Only variables with a non-empty description
-                            are shown. Values are pre-filled from the API and
-                            can be edited before running.
             Variables       User-defined pipeline variables (KEY=VALUE).
 
         Runner keybindings:
