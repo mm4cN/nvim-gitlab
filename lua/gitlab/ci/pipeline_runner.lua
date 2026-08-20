@@ -378,7 +378,7 @@ end
 
 local function fetch_inputs(state)
   if state.project == "" or state.ref == "" then
-    return
+    return nil, "project and ref are required"
   end
 
   local inputs, err, yaml_vars = api.pipeline_inputs({
@@ -389,7 +389,7 @@ local function fetch_inputs(state)
 
   if err then
     notification.warn("Could not fetch CI config for " .. state.project .. ": " .. err)
-    return
+    return nil, err
   end
 
   -- spec:inputs → state.fields
@@ -433,6 +433,56 @@ local function fetch_inputs(state)
     table.insert(state.yaml_vars, entry)
   end
   state.yaml_vars_key = new_key
+  return true, nil
+end
+
+local function change_project(state, candidate, get_project, discover)
+  local previous_project = state.committed_project or state.project_fallback or ""
+  local previous_ref = state.ref
+  candidate = vim.trim(tostring(candidate or ""))
+
+  if candidate == "" then
+    state.project = previous_project
+    state.ref = previous_ref
+    return nil, "project is required"
+  end
+
+  if state.committed_project and candidate == state.committed_project then
+    state.project = state.committed_project
+    return true, false
+  end
+
+  local project, err = get_project({
+    project = candidate,
+    cwd = state.root or vim.fn.getcwd(),
+  })
+  if not project then
+    state.project = previous_project
+    state.ref = previous_ref
+    return nil, err
+  end
+
+  local canonical_project = project.path_with_namespace
+  local canonicalizing_fallback = not state.committed_project and candidate == state.project_fallback
+  if canonical_project == previous_project or canonicalizing_fallback then
+    state.project = canonical_project
+    state.committed_project = canonical_project
+    state.project_fallback = canonical_project
+    return true, false
+  end
+
+  state.project = canonical_project
+  state.committed_project = canonical_project
+  state.project_fallback = canonical_project
+  state.ref = project.default_branch
+  state.fields = {}
+  state.yaml_vars = {}
+  state.yaml_vars_key = ""
+  -- Metadata is authoritative once resolved. Discovery failure must not roll
+  -- Project/Ref back to the previous repository; stale discovered state stays
+  -- cleared while manual state.variables remains untouched.
+  discover(state)
+  return true, true
 end
 
 -- make_desc_popup creates a non-focusable, borderless popup for description text.
@@ -686,6 +736,8 @@ function M.open()
 
   local state = {
     project = ctx and ctx.project or "",
+    committed_project = nil,
+    project_fallback = ctx and ctx.project or "",
     ref = ctx and ctx.ref or "",
     root = ctx and ctx.root or nil,
     fields = {},
@@ -753,11 +805,13 @@ function M.open()
   end
 
   on_submit_project = function()
-    if state.project == "" then
+    local ok, changed_or_err = change_project(state, state.project, api.project, fetch_inputs)
+    if not ok then
+      notification.error("Could not change project: " .. tostring(changed_or_err))
+      build()
       return
     end
-    fetch_inputs(state)
-    build()
+    build({ focus_ref = changed_or_err })
   end
 
   on_submit_ref = function()
@@ -811,6 +865,7 @@ function M.open()
 end
 
 M._fetch_inputs = fetch_inputs
+M._change_project = change_project
 M._merge_variables = merge_variables
 M._sanitize_ui = sanitize_ui
 M._option_index = option_index

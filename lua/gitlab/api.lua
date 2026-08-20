@@ -120,6 +120,41 @@ function M.pipelines(opts)
   })
 end
 
+function M.project(opts)
+  opts = opts or {}
+
+  if not opts.project or opts.project == "" then
+    return nil, "project is required"
+  end
+
+  local project, err = M.get(project_prefix(opts), { cwd = opts.cwd })
+  if err then
+    return nil, err
+  end
+  if type(project) ~= "table" then
+    return nil, "Project metadata is unavailable"
+  end
+  if type(project.id) ~= "number" then
+    return nil, "Project metadata is missing id"
+  end
+  if type(project.name) ~= "string" or project.name == "" then
+    return nil, "Project metadata is missing name"
+  end
+  if not project.path_with_namespace or project.path_with_namespace == "" then
+    return nil, "Project metadata is missing path_with_namespace"
+  end
+  if not project.default_branch or project.default_branch == "" then
+    return nil, "Project metadata is missing default_branch"
+  end
+
+  return {
+    id = project.id,
+    name = project.name,
+    path_with_namespace = project.path_with_namespace,
+    default_branch = project.default_branch,
+  }, nil
+end
+
 local function is_map(value)
   return type(value) == "table" and not vim.islist(value)
 end

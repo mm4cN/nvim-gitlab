@@ -325,6 +325,196 @@ describe("pipeline runner unbounded discovery", function()
   end)
 end)
 
+describe("pipeline runner project changes", function()
+  local function state()
+    return {
+      project = "new/project",
+      committed_project = "old/project",
+      ref = "feature/old",
+      root = "/repo",
+      fields = { { name = "OLD_INPUT", value = "old" } },
+      yaml_vars = { { key = "OLD_VAR", value = "old" } },
+      yaml_vars_key = "old/project|feature/old",
+      variables = { { key = "MANUAL", value = "keep" } },
+    }
+  end
+
+  it("commits the canonical API project, resets Ref, and refreshes discovery", function()
+    local current = state()
+    local requested
+    local discovered
+    local ok, changed = pipeline_runner._change_project(
+      current,
+      "alias/project",
+      function(opts)
+        requested = opts
+        return {
+          path_with_namespace = "canonical/project",
+          default_branch = "trunk",
+        }, nil
+      end,
+      function(received)
+        discovered = received.project .. "|" .. received.ref
+      end
+    )
+    assert.eq(ok, true)
+    assert.eq(changed, true)
+    assert.eq(requested.project, "alias/project")
+    assert.eq(requested.cwd, "/repo")
+    assert.eq(current.project, "canonical/project")
+    assert.eq(current.committed_project, "canonical/project")
+    assert.eq(current.ref, "trunk")
+    assert.eq(#current.fields, 0)
+    assert.eq(#current.yaml_vars, 0)
+    assert.eq(current.yaml_vars_key, "")
+    assert.eq(discovered, "canonical/project|trunk")
+    assert.eq(current.variables[1].key, "MANUAL")
+    assert.eq(current.variables[1].value, "keep")
+  end)
+
+  it("trims submitted Project input before comparison and metadata lookup", function()
+    local current = state()
+    local requested
+    local ok, changed = pipeline_runner._change_project(
+      current,
+      "  canonical/project\t",
+      function(opts)
+        requested = opts.project
+        return { path_with_namespace = "canonical/project", default_branch = "main" }, nil
+      end,
+      function() end
+    )
+    assert.eq(ok, true)
+    assert.eq(changed, true)
+    assert.eq(requested, "canonical/project")
+    assert.eq(current.project, "canonical/project")
+  end)
+
+  it("rejects an empty Project after trimming and restores visible values", function()
+    local current = state()
+    local resolved = false
+    local discovered = false
+    local ok, err = pipeline_runner._change_project(
+      current,
+      " \t ",
+      function() resolved = true end,
+      function() discovered = true end
+    )
+    assert.is_nil(ok)
+    assert.eq(err, "project is required")
+    assert.eq(current.project, "old/project")
+    assert.eq(current.ref, "feature/old")
+    assert.eq(resolved, false)
+    assert.eq(discovered, false)
+  end)
+
+  it("does not resolve or reset a project submitted again unchanged", function()
+    local current = state()
+    current.project = "old/project"
+    local resolved = false
+    local discovered = false
+    local ok, changed = pipeline_runner._change_project(
+      current,
+      current.project,
+      function() resolved = true end,
+      function() discovered = true end
+    )
+    assert.eq(ok, true)
+    assert.eq(changed, false)
+    assert.eq(resolved, false)
+    assert.eq(discovered, false)
+    assert.eq(current.ref, "feature/old")
+  end)
+
+  it("canonicalizes the initial context project without resetting its current Ref", function()
+    local current = state()
+    current.project = "context/project"
+    current.committed_project = nil
+    current.project_fallback = "context/project"
+    local discovered = false
+    local ok, changed = pipeline_runner._change_project(
+      current,
+      current.project,
+      function()
+        return { path_with_namespace = "Canonical/Project", default_branch = "main" }, nil
+      end,
+      function() discovered = true end
+    )
+    assert.eq(ok, true)
+    assert.eq(changed, false)
+    assert.eq(current.project, "Canonical/Project")
+    assert.eq(current.committed_project, "Canonical/Project")
+    assert.eq(current.project_fallback, "Canonical/Project")
+    assert.eq(current.ref, "feature/old")
+    assert.eq(discovered, false)
+  end)
+
+  it("does not reset Ref when an alias resolves to the committed canonical project", function()
+    local current = state()
+    local discovered = false
+    local ok, changed = pipeline_runner._change_project(
+      current,
+      "project-alias",
+      function()
+        return { path_with_namespace = "old/project", default_branch = "main" }, nil
+      end,
+      function() discovered = true end
+    )
+    assert.eq(ok, true)
+    assert.eq(changed, false)
+    assert.eq(current.project, "old/project")
+    assert.eq(current.committed_project, "old/project")
+    assert.eq(current.ref, "feature/old")
+    assert.eq(discovered, false)
+  end)
+
+  it("restores visible Project and Ref and preserves all state on metadata failure", function()
+    local current = state()
+    local original_fields = current.fields
+    local original_yaml_vars = current.yaml_vars
+    local original_variables = current.variables
+    local discovered = false
+    local ok, err = pipeline_runner._change_project(
+      current,
+      current.project,
+      function() return nil, "404 Project Not Found" end,
+      function() discovered = true end
+    )
+    assert.is_nil(ok)
+    assert.eq(err, "404 Project Not Found")
+    assert.eq(current.project, "old/project")
+    assert.eq(current.committed_project, "old/project")
+    assert.eq(current.ref, "feature/old")
+    assert.eq(current.fields, original_fields)
+    assert.eq(current.yaml_vars, original_yaml_vars)
+    assert.eq(current.variables, original_variables)
+    assert.eq(discovered, false)
+  end)
+
+  it("keeps canonical Project and default Ref committed when discovery fails", function()
+    local current = state()
+    local manual_variables = current.variables
+    local ok, changed = pipeline_runner._change_project(
+      current,
+      "new/project",
+      function()
+        return { path_with_namespace = "canonical/project", default_branch = "trunk" }, nil
+      end,
+      function() return nil, "CI config unavailable" end
+    )
+    assert.eq(ok, true)
+    assert.eq(changed, true)
+    assert.eq(current.project, "canonical/project")
+    assert.eq(current.committed_project, "canonical/project")
+    assert.eq(current.project_fallback, "canonical/project")
+    assert.eq(current.ref, "trunk")
+    assert.eq(#current.fields, 0)
+    assert.eq(#current.yaml_vars, 0)
+    assert.eq(current.yaml_vars_key, "")
+    assert.eq(current.variables, manual_variables)
+  end)
+end)
+
 describe("pipeline runner added variables", function()
   it("focuses the variable now occupying a removed middle index", function()
     local state = {

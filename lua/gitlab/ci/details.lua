@@ -83,7 +83,7 @@ end
 local function pick_pipeline(root, callback)
   local pipelines, err = api.pipelines({
     cwd = root,
-    per_page = 20,
+    per_page = 100,
   })
 
   if not pipelines then

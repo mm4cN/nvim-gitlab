@@ -58,6 +58,79 @@ describe("api.pipelines", function()
   end)
 end)
 
+describe("api.project", function()
+  it("uses the encoded project path and returns normalized metadata", function()
+    local path_seen
+    local result
+    with_mock(glab, "run_json", function(args)
+      path_seen = args[2]
+      return {
+        id = 42,
+        name = "project",
+        path_with_namespace = "group/sub/project",
+        default_branch = "trunk",
+        description = "not part of the normalized result",
+      }, nil
+    end, function()
+      result = api.project({ project = "group/sub/project", cwd = "/repo" })
+    end)
+    assert.eq(path_seen, "projects/group%2Fsub%2Fproject")
+    assert.eq(result.id, 42)
+    assert.eq(result.name, "project")
+    assert.eq(result.path_with_namespace, "group/sub/project")
+    assert.eq(result.default_branch, "trunk")
+    assert.is_nil(result.description)
+  end)
+
+  it("requires an explicit project without making a request", function()
+    local called = false
+    with_mock(glab, "run_json", function()
+      called = true
+      return {}, nil
+    end, function()
+      local result, err = api.project({})
+      assert.is_nil(result)
+      assert.eq(err, "project is required")
+    end)
+    assert.eq(called, false)
+  end)
+
+  it("propagates inaccessible-project errors", function()
+    with_mock(glab, "run_json", function() return nil, "404 Project Not Found" end, function()
+      local result, err = api.project({ project = "private/project" })
+      assert.is_nil(result)
+      assert.eq(err, "404 Project Not Found")
+    end)
+  end)
+
+  it("rejects incomplete project metadata", function()
+    with_mock(glab, "run_json", function()
+      return { id = 42, name = "project", path_with_namespace = "group/project" }, nil
+    end, function()
+      local result, err = api.project({ project = "group/project" })
+      assert.is_nil(result)
+      assert.contains(err, "default_branch")
+    end)
+  end)
+
+  it("requires id and name in the normalized metadata contract", function()
+    with_mock(glab, "run_json", function()
+      return { name = "project", path_with_namespace = "group/project", default_branch = "main" }, nil
+    end, function()
+      local result, err = api.project({ project = "group/project" })
+      assert.is_nil(result)
+      assert.contains(err, "id")
+    end)
+    with_mock(glab, "run_json", function()
+      return { id = 42, path_with_namespace = "group/project", default_branch = "main" }, nil
+    end, function()
+      local result, err = api.project({ project = "group/project" })
+      assert.is_nil(result)
+      assert.contains(err, "name")
+    end)
+  end)
+end)
+
 describe("api.latest_pipeline", function()
   it("uses encoded explicit project in path", function()
     local path = capture_path_json_with_list(function()

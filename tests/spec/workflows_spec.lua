@@ -69,6 +69,17 @@ describe("job actions", function()
 end)
 
 describe("pipeline and job workflows", function()
+  it("loads 100 recent pipelines for local picker filtering", function()
+    local requested
+    with_mocks({
+      { git, "root", function() return "/repo", nil end },
+      { api, "pipelines", function(opts) requested = opts return {}, nil end },
+    }, function()
+      details.show()
+    end)
+    assert.eq(requested.per_page, 100)
+  end)
+
   for _, backend_name in ipairs({ "vim_ui", "telescope" }) do
     it("runs GitlabPipelineList through " .. backend_name, function()
       local shown
