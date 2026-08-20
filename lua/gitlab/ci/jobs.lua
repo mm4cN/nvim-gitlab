@@ -55,12 +55,16 @@ local function repo_root()
   return root
 end
 
-local function show_logs(root, job_id)
-  local output, err = glab.run({
+local function show_logs(root, job_id, project)
+  local args = {
     "ci",
     "trace",
     tostring(job_id),
-  }, {
+  }
+  if project and project ~= "" then
+    vim.list_extend(args, { "--repo", project })
+  end
+  local output, err = glab.run(args, {
     cwd = root,
   })
 
@@ -86,7 +90,7 @@ function M.logs(opts)
     return
   end
 
-  show_logs(root, job_id)
+  show_logs(root, job_id, opts and opts.project)
 end
 
 return M

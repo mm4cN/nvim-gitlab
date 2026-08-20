@@ -18,6 +18,7 @@ local log_buffer = require("gitlab.ci.log_buffer")
 local picker = require("gitlab.ui.picker")
 local pipelines = require("gitlab.ci.pipelines")
 local process = require("gitlab.util.process")
+local project_picker = require("gitlab.ui.project_picker")
 local ui_state = require("gitlab.ui.state")
 
 local function with_mocks(mocks, fn, index)
@@ -65,6 +66,20 @@ describe("job actions", function()
       assert.eq(request_opts.method, "POST")
       assert.eq(request_opts.cwd, "/repo")
     end)
+
+    it("encodes every namespace level for a cross-project " .. case.name .. " request", function()
+      local request_path
+      with_mocks({
+        { api, "request", function(path)
+          request_path = path
+          return {}, nil
+        end },
+        { buffer, "refresh", function() end },
+      }, function()
+        case.fn(42, { root = "/repo", project = "group/subgroup/project" })
+      end)
+      assert.eq(request_path, "projects/group%2Fsubgroup%2Fproject/jobs/42" .. case.suffix)
+    end)
   end
 end)
 
@@ -74,10 +89,152 @@ describe("pipeline and job workflows", function()
     with_mocks({
       { git, "root", function() return "/repo", nil end },
       { api, "pipelines", function(opts) requested = opts return {}, nil end },
+      { project_picker, "select", function(_, callback) callback(nil) end },
     }, function()
       details.show()
     end)
     assert.eq(requested.per_page, 100)
+  end)
+
+  it("switches PipelineList projects and filters 100 pipelines under the selected project", function()
+    local requested = {}
+    local picker_calls = {}
+    local shown
+    local current_pipeline = { id = 1, ref = "main", status = "success" }
+    local selected_pipeline = { id = 2, ref = "trunk", status = "running" }
+    with_mocks({
+      { git, "root", function() return "/repo", nil end },
+      { git, "remote_project", function() return "current/project", nil end },
+      { api, "pipelines", function(opts)
+        table.insert(requested, opts)
+        return opts.project == "selected/project" and { selected_pipeline } or { current_pipeline }, nil
+      end },
+      { picker, "select", function(items, opts, callback)
+        table.insert(picker_calls, { items = items, opts = opts, callback = callback })
+      end },
+      { project_picker, "select", function(_, callback)
+        callback({ path_with_namespace = "selected/project", default_branch = "trunk" })
+      end },
+      { api, "pipeline_jobs", function(_, opts)
+        assert.eq(opts.project, "selected/project")
+        return {}, nil
+      end },
+      { picker, "show_pipeline", function(opts) shown = opts end },
+    }, function()
+      details.show()
+      assert.contains(picker_calls[1].opts.prompt, "current/project")
+      assert.eq(picker_calls[1].opts.actions[2].key, "<C-p>")
+      picker_calls[1].opts.actions[2].callback(current_pipeline)
+      assert.contains(picker_calls[2].opts.prompt, "selected/project")
+      picker_calls[2].callback(selected_pipeline)
+    end)
+    assert.eq(#requested, 2)
+    assert.eq(requested[1].project, "current/project")
+    assert.eq(requested[2].project, "selected/project")
+    assert.eq(requested[1].per_page, 100)
+    assert.eq(requested[2].per_page, 100)
+    assert.eq(shown.pipeline, selected_pipeline)
+  end)
+
+  it("reopens the current PipelineList project when project selection is cancelled", function()
+    local requested = {}
+    local picker_calls = {}
+    with_mocks({
+      { git, "root", function() return "/repo", nil end },
+      { git, "remote_project", function() return "current/project", nil end },
+      { api, "pipelines", function(opts)
+        table.insert(requested, opts.project)
+        return { { id = 1, ref = "main", status = "success" } }, nil
+      end },
+      { picker, "select", function(_, opts)
+        table.insert(picker_calls, opts)
+      end },
+      { project_picker, "select", function(_, callback) callback(nil) end },
+    }, function()
+      details.show()
+      picker_calls[1].actions[2].callback()
+    end)
+    assert.eq(#requested, 2)
+    assert.eq(requested[1], "current/project")
+    assert.eq(requested[2], "current/project")
+  end)
+
+  it("can switch projects again when the selected project has no pipelines", function()
+    local requested = {}
+    local picker_calls = {}
+    local project_callbacks = {}
+    with_mocks({
+      { git, "root", function() return "/repo", nil end },
+      { git, "remote_project", function() return "current/project", nil end },
+      { api, "pipelines", function(opts)
+        table.insert(requested, opts.project)
+        if opts.project == "empty/project" then return {}, nil end
+        return { { id = 1, ref = "main", status = "success" } }, nil
+      end },
+      { picker, "select", function(_, opts) table.insert(picker_calls, opts) end },
+      { project_picker, "select", function(_, callback) table.insert(project_callbacks, callback) end },
+    }, function()
+      details.show()
+      picker_calls[1].actions[2].callback()
+      project_callbacks[1]({ path_with_namespace = "empty/project" })
+      project_callbacks[2]({ path_with_namespace = "next/project" })
+    end)
+    assert.eq(#requested, 3)
+    assert.eq(requested[1], "current/project")
+    assert.eq(requested[2], "empty/project")
+    assert.eq(requested[3], "next/project")
+    assert.contains(picker_calls[2].prompt, "next/project")
+  end)
+
+  it("keeps selected-project context in pipeline detail actions", function()
+    local shown
+    local called = {}
+    local pipeline = { id = 7, ref = "trunk", status = "success" }
+    local job = { id = 8, name = "test", status = "success" }
+    with_mocks({
+      { git, "root", function() return "/repo", nil end },
+      { api, "pipelines", function() return { pipeline }, nil end },
+      { picker, "select", function(items, _, callback) callback(items[1]) end },
+      { api, "pipeline_jobs", function(_, opts)
+        called.jobs_project = opts.project
+        return { job }, nil
+      end },
+      { picker, "show_pipeline", function(opts) shown = opts end },
+    }, function()
+      details.show({ project = "selected/project" })
+    end)
+    with_mocks({
+      { jobs, "logs", function(opts) called.logs_project = opts.project end },
+      { artifacts, "download", function(opts) called.artifacts_project = opts.project end },
+      { actions, "rerun_pipeline", function(_, opts) called.rerun_project = opts.project end },
+      { api, "pipeline", function(_, opts)
+        called.refresh_pipeline_project = opts.project
+        return pipeline, nil
+      end },
+      { api, "pipeline_jobs", function(_, opts)
+        called.refresh_jobs_project = opts.project
+        return { job }, nil
+      end },
+      { api, "job", function(_, opts)
+        called.job_project = opts.project
+        return job, nil
+      end },
+      { job_details, "show", function(opts) called.job_details_project = opts.project end },
+    }, function()
+      shown.actions.logs(job)
+      shown.actions.artifacts(job)
+      shown.actions.rerun()
+      shown.actions.refresh()
+      shown.actions.details(job)
+    end)
+    assert.eq(called.jobs_project, "selected/project")
+    assert.eq(called.logs_project, "selected/project")
+    assert.eq(called.artifacts_project, "selected/project")
+    assert.eq(called.rerun_project, "selected/project")
+    assert.eq(called.refresh_pipeline_project, "selected/project")
+    assert.eq(called.refresh_jobs_project, "selected/project")
+    assert.eq(called.job_project, "selected/project")
+    assert.eq(called.job_details_project, "selected/project")
   end)
 
   for _, backend_name in ipairs({ "vim_ui", "telescope" }) do
@@ -249,6 +406,34 @@ describe("logs and artifacts", function()
       assert.eq(command[#command], "/artifacts/job-42-artifacts.zip")
       assert.contains(table.concat(command, "\n"), "/projects/99/jobs/42/artifacts")
       assert.eq(pushed.title, "GitLab Artifacts")
+    end)
+    config.options.extract_artifacts = old_extract
+    if not ok then error(err) end
+  end)
+
+  it("encodes every namespace level for cross-project artifact lookup", function()
+    local project_path
+    local old_extract = config.options.extract_artifacts
+    config.options.extract_artifacts = false
+    local ok, err = pcall(function()
+      with_mocks({
+        { auth, "token", function() return "token", nil end },
+        { api, "get", function(path)
+          project_path = path
+          return { id = 99 }, nil
+        end },
+        { vim.fn, "isdirectory", function() return 1 end },
+        { process, "run", function() return "", nil end },
+        { buffer, "push", function() end },
+      }, function()
+        artifacts.download({
+          job_id = 42,
+          root = "/repo",
+          project = "group/subgroup/project",
+          output_dir = "/artifacts",
+        })
+      end)
+      assert.eq(project_path, "projects/group%2Fsubgroup%2Fproject")
     end)
     config.options.extract_artifacts = old_extract
     if not ok then error(err) end

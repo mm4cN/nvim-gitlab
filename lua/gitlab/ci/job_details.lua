@@ -79,29 +79,30 @@ function M.show(opts)
 
   local root = opts.root or repo_root()
   if not root then return end
+  local project = opts.project
 
   local function do_show_job(job)
     picker.show_job({
       job = job,
       actions = {
         logs = function()
-          require("gitlab.ci.jobs").logs({ args = job.id, root = root })
+          require("gitlab.ci.jobs").logs({ args = job.id, root = root, project = project })
         end,
         artifacts = function()
-          artifacts.download({ job_id = job.id })
+          artifacts.download({ job_id = job.id, root = root, project = project })
         end,
         retry = function()
-          actions.retry_job(job.id)
+          actions.retry_job(job.id, { root = root, project = project })
         end,
         play = function()
           if job.status ~= "manual" then
             notification.warn("Job is not manual: " .. tostring(job.status))
             return
           end
-          actions.play_job(job.id)
+          actions.play_job(job.id, { root = root, project = project })
         end,
         refresh = function()
-          local refreshed, err = api.job(job.id, { cwd = root })
+          local refreshed, err = api.job(job.id, { cwd = root, project = project })
           if not refreshed then
             notification.error(err)
             return
@@ -122,7 +123,7 @@ function M.show(opts)
   -- Fetch by explicit job_id
   local job_id = opts.job_id
   if job_id and job_id ~= "" then
-    local job, err = api.job(job_id, { cwd = root })
+    local job, err = api.job(job_id, { cwd = root, project = project })
     if not job then
       notification.error(err)
       return

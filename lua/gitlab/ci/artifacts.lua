@@ -64,7 +64,11 @@ function M.download(opts)
     return
   end
 
-  local project, project_err = api.get("projects/:id", {
+  local project_path = "projects/:id"
+  if opts.project and opts.project ~= "" then
+    project_path = "projects/" .. opts.project:gsub("/", "%%2F")
+  end
+  local project, project_err = api.get(project_path, {
     cwd = root,
   })
 

@@ -7,6 +7,7 @@ local job_details = require("gitlab.ci.job_details")
 local jobs_module = require("gitlab.ci.jobs")
 local notification = require("gitlab.ui.notification")
 local picker = require("gitlab.ui.picker")
+local project_picker = require("gitlab.ui.project_picker")
 
 local M = {}
 
@@ -21,8 +22,8 @@ local function repo_root()
   return root
 end
 
-local function show_pipeline(root, pipeline)
-  local pipeline_jobs, jobs_err = api.pipeline_jobs(pipeline.id, { cwd = root })
+local function show_pipeline(root, project, pipeline)
+  local pipeline_jobs, jobs_err = api.pipeline_jobs(pipeline.id, { cwd = root, project = project })
 
   if not pipeline_jobs then
     notification.error(jobs_err)
@@ -37,7 +38,7 @@ local function show_pipeline(root, pipeline)
       jobs = jobs_data,
       actions = {
         details = function(job)
-          local full_job, err = api.job(job.id, { cwd = root })
+          local full_job, err = api.job(job.id, { cwd = root, project = project })
           if not full_job then
             notification.error(err)
             return
@@ -45,27 +46,28 @@ local function show_pipeline(root, pipeline)
           job_details.show({
             job = full_job,
             root = root,
+            project = project,
             on_back = function()
               do_show_pipeline(pipeline_data, jobs_data)
             end,
           })
         end,
         logs = function(job)
-          jobs_module.logs({ args = job.id, root = root })
+          jobs_module.logs({ args = job.id, root = root, project = project })
         end,
         artifacts = function(job)
-          artifacts.download({ job_id = job.id })
+          artifacts.download({ job_id = job.id, root = root, project = project })
         end,
         rerun = function()
-          actions.rerun_pipeline(pipeline_data.id)
+          actions.rerun_pipeline(pipeline_data.id, { root = root, project = project })
         end,
         refresh = function()
-          local r_p, p_err = api.pipeline(pipeline_data.id, { cwd = root })
+          local r_p, p_err = api.pipeline(pipeline_data.id, { cwd = root, project = project })
           if not r_p then
             notification.error(p_err)
             return
           end
-          local r_j, j_err = api.pipeline_jobs(pipeline_data.id, { cwd = root })
+          local r_j, j_err = api.pipeline_jobs(pipeline_data.id, { cwd = root, project = project })
           if not r_j then
             notification.error(j_err)
             return
@@ -80,9 +82,10 @@ local function show_pipeline(root, pipeline)
   do_show_pipeline(pipeline, pipeline_jobs)
 end
 
-local function pick_pipeline(root, callback)
+local function pick_pipeline(root, project, callback)
   local pipelines, err = api.pipelines({
     cwd = root,
+    project = project,
     per_page = 100,
   })
 
@@ -93,11 +96,16 @@ local function pick_pipeline(root, callback)
 
   if #pipelines == 0 then
     notification.error("No pipelines found")
+    project_picker.select({ cwd = root }, function(selected)
+      if selected then
+        pick_pipeline(root, selected.path_with_namespace, callback)
+      end
+    end)
     return
   end
 
   picker.select(pipelines, {
-    prompt = "GitLab pipelines",
+    prompt = "GitLab pipelines — " .. (project or "current project"),
     select_label = "Details",
     format_item = format.pipeline,
     preview = function(pipeline)
@@ -117,7 +125,16 @@ local function pick_pipeline(root, callback)
         key = "<C-r>",
         label = "Re-run pipeline",
         callback = function(pipeline)
-          actions.rerun_pipeline(pipeline.id)
+          actions.rerun_pipeline(pipeline.id, { root = root, project = project })
+        end,
+      },
+      {
+        key = "<C-p>",
+        label = "Select project",
+        callback = function()
+          project_picker.select({ cwd = root }, function(selected)
+            pick_pipeline(root, selected and selected.path_with_namespace or project, callback)
+          end)
         end,
       },
     },
@@ -126,7 +143,7 @@ local function pick_pipeline(root, callback)
       return
     end
 
-    callback(pipeline)
+    callback(pipeline, project)
   end)
 end
 
@@ -139,9 +156,15 @@ function M.show(opts)
     return
   end
 
+  local project = opts.project
+  if not project or project == "" then
+    project = git.remote_project()
+  end
+
   if opts.pipeline_id and opts.pipeline_id ~= "" then
     local pipeline, err = api.pipeline(opts.pipeline_id, {
       cwd = root,
+      project = project,
     })
 
     if not pipeline then
@@ -149,12 +172,12 @@ function M.show(opts)
       return
     end
 
-    show_pipeline(root, pipeline)
+    show_pipeline(root, project, pipeline)
     return
   end
 
-  pick_pipeline(root, function(pipeline)
-    show_pipeline(root, pipeline)
+  pick_pipeline(root, project, function(pipeline, selected_project)
+    show_pipeline(root, selected_project, pipeline)
   end)
 end
 

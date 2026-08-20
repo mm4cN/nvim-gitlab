@@ -16,20 +16,28 @@ local function repo_root()
   return root
 end
 
-function M.retry_job(job_id)
+local function project_path(project, suffix)
+  if project and project ~= "" then
+    return "projects/" .. project:gsub("/", "%%2F") .. suffix
+  end
+  return "projects/:id" .. suffix
+end
+
+function M.retry_job(job_id, opts)
   if not job_id or job_id == "" then
     notification.error("job_id is required")
     return
   end
 
-  local root = repo_root()
+  opts = opts or {}
+  local root = opts.root or repo_root()
   if not root then
     return
   end
 
   notification.info("Retrying job #" .. tostring(job_id) .. "...")
 
-  local _, err = api.request("projects/:id/jobs/" .. tostring(job_id) .. "/retry", {
+  local _, err = api.request(project_path(opts.project, "/jobs/" .. tostring(job_id) .. "/retry"), {
     cwd = root,
     method = "POST",
   })
@@ -43,20 +51,21 @@ function M.retry_job(job_id)
   buffer.refresh()
 end
 
-function M.play_job(job_id)
+function M.play_job(job_id, opts)
   if not job_id or job_id == "" then
     notification.error("job_id is required")
     return
   end
 
-  local root = repo_root()
+  opts = opts or {}
+  local root = opts.root or repo_root()
   if not root then
     return
   end
 
   notification.info("Playing job #" .. tostring(job_id) .. "...")
 
-  local _, err = api.request("projects/:id/jobs/" .. tostring(job_id) .. "/play", {
+  local _, err = api.request(project_path(opts.project, "/jobs/" .. tostring(job_id) .. "/play"), {
     cwd = root,
     method = "POST",
   })
@@ -70,19 +79,21 @@ function M.play_job(job_id)
   buffer.refresh()
 end
 
-function M.rerun_pipeline(pipeline_id)
+function M.rerun_pipeline(pipeline_id, opts)
   if not pipeline_id or pipeline_id == "" then
     notification.error("pipeline_id is required")
     return
   end
 
-  local root = repo_root()
+  opts = opts or {}
+  local root = opts.root or repo_root()
   if not root then
     return
   end
 
   local pipeline, err = api.pipeline(pipeline_id, {
     cwd = root,
+    project = opts.project,
   })
 
   if not pipeline then
@@ -99,12 +110,16 @@ function M.rerun_pipeline(pipeline_id)
 
   notification.info("Rerunning pipeline on " .. ref .. "...")
 
-  local output, run_err = require("gitlab.glab").run({
+  local args = {
     "pipeline",
     "run",
     "-b",
     ref,
-  }, {
+  }
+  if opts.project and opts.project ~= "" then
+    vim.list_extend(args, { "--repo", opts.project })
+  end
+  local output, run_err = require("gitlab.glab").run(args, {
     cwd = root,
   })
 
