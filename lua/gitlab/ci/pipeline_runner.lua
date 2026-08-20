@@ -130,7 +130,7 @@ end
 
 local function make_field_component(field, label)
   if not field.options or #field.options == 0 then
-    local input = make_input(label, field.value, function(value) field.value = value end)
+    local input = make_input(label, sanitize_ui(field.value), function(value) field.value = value end)
     input._gitlab_component_kind = "input"
     return input, 3, nil
   end
