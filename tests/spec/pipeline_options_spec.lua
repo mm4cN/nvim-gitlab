@@ -32,6 +32,64 @@ describe("pipeline runner option fields", function()
     menu_entry.initializing = false
     component.options.on_change(component.options.lines[2])
     assert.eq(field.value, original)
+    assert.eq(menu_entry.selected_index, 2)
+  end)
+
+  it("restores a spec input selection after manual-variable rebuilds", function()
+    local field = { name = "environment", value = "dev", options = { "dev", "prod" } }
+    local component, _, current_entry = pipeline_runner._make_field_component(field, "environment")
+
+    current_entry.initializing = false
+    component.options.on_change(component.options.lines[2])
+    assert.eq(field.value, "prod")
+    assert.eq(current_entry.selected_index, 2)
+
+    local state = { fields = { field }, variables = {} }
+    table.insert(state.variables, { key = "", value = "" })
+    local rebuilt, _, menu_entry = pipeline_runner._make_field_component(field, "environment")
+    assert.eq(menu_entry.selected_index, 2)
+    assert.eq(rebuilt.options.lines[2].value, "prod")
+  end)
+
+  it("restores a discovered YAML variable selection after add and remove rebuilds", function()
+    local yaml_variable = { key = "REGION", value = "east", options = { "east", "west" } }
+    local component, _, current_entry = pipeline_runner._make_field_component(yaml_variable, yaml_variable.key)
+
+    current_entry.initializing = false
+    component.options.on_change(component.options.lines[2])
+    assert.eq(yaml_variable.value, "west")
+    assert.eq(current_entry.selected_index, 2)
+
+    local state = { yaml_vars = { yaml_variable }, variables = { { key = "TEMP", value = "value" } } }
+    pipeline_runner._remove_added_variable(state, 1)
+    local _, _, rebuilt_entry = pipeline_runner._make_field_component(yaml_variable, yaml_variable.key)
+    assert.eq(rebuilt_entry.selected_index, 2)
+  end)
+
+  it("restores current option selections after a picker transition", function()
+    local field = { name = "environment", value = "dev", options = { "dev", "prod" } }
+    local yaml_variable = { key = "REGION", value = "east", options = { "east", "west" } }
+    local field_component, _, field_entry = pipeline_runner._make_field_component(field, field.name)
+    local variable_component, _, variable_entry = pipeline_runner._make_field_component(yaml_variable, yaml_variable.key)
+    field_entry.initializing = false
+    variable_entry.initializing = false
+    field_component.options.on_change(field_component.options.lines[2])
+    variable_component.options.on_change(variable_component.options.lines[2])
+
+    local state = { ref = "main", fields = { field }, yaml_vars = { yaml_variable } }
+    pipeline_runner._open_ref_picker(
+      state,
+      { "main", "feature" },
+      function() end,
+      function() error("discovery must not run when picker is cancelled") end,
+      function() end,
+      function(_, _, callback) callback(nil) end
+    )
+
+    local _, _, rebuilt_field = pipeline_runner._make_field_component(state.fields[1], field.name)
+    local _, _, rebuilt_variable = pipeline_runner._make_field_component(state.yaml_vars[1], yaml_variable.key)
+    assert.eq(rebuilt_field.selected_index, 2)
+    assert.eq(rebuilt_variable.selected_index, 2)
   end)
 
   it("keeps fields without options as NuiInput", function()

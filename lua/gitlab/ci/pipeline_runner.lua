@@ -182,6 +182,7 @@ local function make_field_component(field, label)
     on_change = function(item)
       if not entry.initializing then
         field.value = item.value
+        entry.selected_index = option_index(field.options, item.value)
       end
     end,
   })
