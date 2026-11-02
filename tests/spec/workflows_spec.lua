@@ -11,6 +11,7 @@ local auth = require("gitlab.auth")
 local buffer = require("gitlab.ui.buffer")
 local config = require("gitlab.config")
 local details = require("gitlab.ci.details")
+local format = require("gitlab.ci.format")
 local git = require("gitlab.git")
 local job_details = require("gitlab.ci.job_details")
 local jobs = require("gitlab.ci.jobs")
@@ -85,6 +86,19 @@ describe("job actions", function()
 end)
 
 describe("pipeline and job workflows", function()
+  it("renders a running job with null optional fields", function()
+    local lines = format.job_preview({
+      id = 8,
+      name = "test",
+      status = "running",
+      duration = vim.NIL,
+      runner = vim.NIL,
+    })
+
+    assert.eq(lines[8], "Duration unknown")
+    assert.eq(lines[9], "Runner   unknown")
+  end)
+
   it("loads 100 recent pipelines for local picker filtering", function()
     local requested
     with_mocks({

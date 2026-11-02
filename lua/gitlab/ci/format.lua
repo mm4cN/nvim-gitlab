@@ -2,8 +2,12 @@ local constants = require("gitlab.constants")
 
 local M = {}
 
+local function is_missing(value)
+  return value == nil or value == vim.NIL or value == ""
+end
+
 function M.datetime(value)
-  if not value or value == "" then
+  if is_missing(value) then
     return "unknown"
   end
 
@@ -25,7 +29,7 @@ function M.status_icon(status)
 end
 
 function M.value(value)
-  if value == nil or value == "" then
+  if is_missing(value) then
     return "unknown"
   end
 
@@ -33,7 +37,7 @@ function M.value(value)
 end
 
 function M.short_sha(sha)
-  if not sha or sha == "" then
+  if is_missing(sha) then
     return "unknown"
   end
 
@@ -41,7 +45,7 @@ function M.short_sha(sha)
 end
 
 function M.duration(seconds)
-  if not seconds then
+  if type(seconds) ~= "number" then
     return "unknown"
   end
 
@@ -79,7 +83,7 @@ function M.pipeline(pipeline)
 end
 
 function M.job_preview(job)
-  local runner = job.runner or {}
+  local runner = type(job.runner) == "table" and job.runner or {}
 
   return {
     "Job",
